@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Paint Sequencer</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --surface-color: #ffffff;
+            --text-color: #1c1e21;
+            --text-secondary-color: #606770;
+            --primary-color: #1877f2;
+            --primary-hover-color: #166fe5;
+            --secondary-color: #42b72a;
+            --secondary-hover-color: #36a420;
+            --danger-color: #fa383e;
+            --border-color: #dddfe2;
+            --stamp-color: #ffc107;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        body { font-family: var(--font-family); line-height: 1.6; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 24px; }
+        .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+        .card { background-color: var(--surface-color); box-shadow: var(--shadow); border-radius: 8px; padding: 20px; position: relative; }
+        h1, h2 { margin-top: 0; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
+        h1 { font-size: 1.8rem; }
+        h2 { font-size: 1.4rem; }
+        .title-input { font-size: 1.2rem; font-weight: 600; border: none; border-bottom: 2px solid transparent; width: 100%; padding: 4px; margin-bottom: 20px; transition: border-color 0.2s; }
+        .title-input:focus { outline: none; border-bottom-color: var(--primary-color); }
+        .setup-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .input-group { display: flex; gap: 8px; margin-bottom: 15px; }
+        .input-group input { flex-grow: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 1rem; }
+        .input-group button { white-space: nowrap; }
+        button { padding: 10px 18px; background-color: var(--primary-color); color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background-color 0.2s, opacity 0.2s; }
+        button:hover { background-color: var(--primary-hover-color); }
+        .btn-add, .btn-save.unsaved { background-color: var(--secondary-color); }
+        .btn-add:hover, .btn-save.unsaved:hover { background-color: var(--secondary-hover-color); }
+        .btn-danger { background-color: var(--danger-color); }
+        .btn-danger:hover { background-color: #e03238; }
+        .btn-stamp { background-color: var(--stamp-color); color: var(--text-color); }
+        .btn-stamp:hover { background-color: #e0ac00; }
+        .item-list { list-style-type: none; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+        .item-list li { display: flex; align-items: center; background-color: var(--bg-color); border-radius: 15px; padding: 5px 5px 5px 12px; font-size: 0.9rem; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .remove-btn { background: #ccc; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; margin-left: 8px; font-weight: bold; transition: background-color 0.2s; }
+        .remove-btn:hover { background-color: #a0a0a0; }
+        .part-sequence-row { display: flex; align-items: center; gap: 15px; padding: 12px 0; border-bottom: 1px solid var(--border-color); transition: background-color 0.2s; }
+        .part-sequence-row:last-child { border-bottom: none; }
+        .part-name-label { font-weight: 600; width: 150px; flex-shrink: 0; }
+        .sequence-steps { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-grow: 1; }
+        .paint-step { display: flex; align-items: center; gap: 6px; background: #e4e6eb; border-radius: 6px; padding: 4px; position: relative; }
+        .reorder-btn { display: inline-flex; align-items: center; justify-content: center; background: none; border: 1px solid #ccc; color: #888; border-radius: 50%; width: 22px; height: 22px; padding: 0; font-size: 14px; line-height: 1; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .reorder-btn:hover { background-color: #ddd; border-color: #aaa; color: #333; }
+        .paint-step .remove-step-btn { color: #aaa; cursor: pointer; font-weight: bold; padding: 0 4px; }
+        .paint-step .remove-step-btn:hover { color: var(--danger-color); }
+        .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
+        .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
+        #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
+        .output-step { display: flex; align-items: center; gap: 15px; padding: 10px 10px 5px 10px; }
+        .completion-notice { color: var(--text-secondary-color); font-size: 0.9em; padding: 0px 10px 10px 48px; border-bottom: 1px dotted var(--border-color); }
+        .output-step-container:last-child .completion-notice, .output-step-container:last-child .output-step { border-bottom: none; }
+        .output-icon { font-size: 1.5rem; }
+        .output-action { font-weight: 600; width: 220px;}
+        .output-color-name { background: #eee; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
+        #output-section.invalidated #output { opacity: 0.4; }
+        #output-section.invalidated::after { content: 'Schedule outdated. Please regenerate.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 100, 0.85); border: 1px solid #e0e060; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-align: center; }
+        .main-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 20px; }
+        #save-feedback { color: var(--secondary-color); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
+        #stamp-tool-toolbar { display: none; background-color: var(--bg-color); padding: 15px; border-radius: 6px; margin-bottom: 20px; align-items: center; gap: 15px; border: 1px solid var(--border-color); }
+        .stamp-mode-active #stamp-tool-toolbar { display: flex; }
+        .stamp-mode-active .add-paint-control, .stamp-mode-active .reorder-btn, .stamp-mode-active .remove-step-btn { display: none; }
+        .drop-target { border: 2px dashed var(--border-color); border-radius: 6px; cursor: pointer; transition: all 0.2s; position: relative; }
+        .drop-target:hover { border-color: var(--stamp-color); background-color: #fff8e1; }
+        .drop-target::before { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px; color: #ccc; transition: color 0.2s; }
+        .drop-target:hover::before { color: var(--stamp-color); }
+        .drop-target.large { width: 50px; height: 32px; }
+        .drop-target.small { width: 20px; height: 32px; }
+        
+        @media (max-width: 900px) {
+            .setup-container { grid-template-columns: 1fr; }
+            .part-sequence-row { flex-direction: column; align-items: flex-start; }
+            .main-controls { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Main Header & Title -->
+        <div class="card">
+            <h1>🎨 Advanced Paint Sequencer</h1>
+            <input type="text" id="title-input" class="title-input" placeholder="Enter Project Title">
+        </div>
+
+        <!-- Setup Cards -->
+        <div class="card">
+            <div class="setup-container">
+                <div id="paint-management">
+                    <h2>Available Paints</h2>
+                    <div class="input-group">
+                        <input type="text" id="paint-input" placeholder="Add paints, comma-separated">
+                        <button id="add-paint-btn" class="btn-add">Add</button>
+                    </div>
+                    <ul id="paint-list" class="item-list"></ul>
+                </div>
+                <div id="part-management">
+                    <h2>📦 Parts to be Painted</h2>
+                    <div class="input-group">
+                        <input type="text" id="part-input" placeholder="Add parts, comma-separated">
+                        <button id="add-part-btn" class="btn-add">Add</button>
+                    </div>
+                    <ul id="part-list" class="item-list"></ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sequence Builder -->
+        <div class="card" id="sequence-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 0;">
+                <h2 style="border: none; margin: 0; padding: 0;">Assign Paint Sequence</h2>
+                <button id="stamp-tool-btn" class="btn-stamp">🖌️ Stamp Tool</button>
+            </div>
+            <div id="stamp-tool-toolbar">
+                <strong>Stamping with:</strong>
+                <select id="stamp-color-select"></select>
+                <button id="exit-stamp-btn" class="btn-danger">Finish Stamping</button>
+            </div>
+            <div id="part-sequence-container"><p style="color: var(--text-secondary-color);">Add parts to begin.</p></div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="card">
+            <div class="main-controls">
+                <button id="save-btn" class="btn-save">💾 Save & Copy Link</button>
+                <button id="generate-btn">✨ Generate Optimal Order</button>
+                <button id="reset-btn" class="btn-danger">🔄 Reset All</button>
+            </div>
+            <p style="text-align: center; margin: 10px 0 0 0;"><span id="save-feedback"></span></p>
+        </div>
+
+        <!-- Output -->
+        <div class="card" id="output-section">
+            <h2>✔️ Optimized Schedule</h2>
+            <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // STATE
+        let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
+        let nextPartId = 0;
+
+        //ELEMENTS
+        const sequenceCard = document.getElementById('sequence-card');
+        const stampToolBtn = document.getElementById('stamp-tool-btn');
+        const stampToolToolbar = document.getElementById('stamp-tool-toolbar');
+        const stampColorSelect = document.getElementById('stamp-color-select');
+        const exitStampBtn = document.getElementById('exit-stamp-btn');
+        const titleInput = document.getElementById('title-input');
+        const saveBtn = document.getElementById('save-btn');
+        const saveFeedback = document.getElementById('save-feedback');
+        const paintInput = document.getElementById('paint-input');
+        const addPaintBtn = document.getElementById('add-paint-btn');
+        const paintList = document.getElementById('paint-list');
+        const partInput = document.getElementById('part-input');
+        const addPartBtn = document.getElementById('add-part-btn');
+        const partList = document.getElementById('part-list');
+        const partSequenceContainer = document.getElementById('part-sequence-container');
+        const generateBtn = document.getElementById('generate-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const outputSection = document.getElementById('output-section');
+        const outputDiv = document.getElementById('output');
+
+        const renderAll = () => { renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
+        const renderTitle = () => { titleInput.value = state.title; };
+        const renderPaintList = () => { paintList.innerHTML = state.paints.map(p => `<li><span>${p}</span><span class="remove-btn" data-paint-name="${p}" title="Remove Paint">×</span></li>`).join(''); };
+        const renderPartList = () => { partList.innerHTML = state.parts.map(p => `<li><span>${p.name}</span><span class="remove-btn" data-part-id="${p.id}" title="Remove Part">×</span></li>`).join(''); };
+        
+        function renderSequenceBuilder() {
+            partSequenceContainer.innerHTML = '';
+            if (state.parts.length === 0) {
+                partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>';
+                return;
+            }
+            const isStamping = state.stampMode.isActive && state.stampMode.color;
+            sequenceCard.classList.toggle('stamp-mode-active', isStamping);
+            state.parts.forEach(part => {
+                const row = document.createElement('div');
+                row.className = 'part-sequence-row';
+                row.dataset.partId = part.id;
+                let sequenceItems = [];
+                if (isStamping) {
+                    sequenceItems.push(`<div class="drop-target large" data-insert-index="0"></div>`);
+                    part.sequence.forEach((color, index) => {
+                        sequenceItems.push(`<div class="paint-step"><span>${color}</span></div>`);
+                        sequenceItems.push(`<div class="drop-target small" data-insert-index="${index + 1}"></div>`);
+                    });
+                } else {
+                    sequenceItems = part.sequence.map((color, index) => `
+                        <div class="paint-step">
+                            <button class="reorder-btn" data-dir="left" data-index="${index}" title="Move Left">←</button>
+                            <span>${color}</span>
+                            <button class="reorder-btn" data-dir="right" data-index="${index}" title="Move Right">→</button>
+                            <span class="remove-step-btn" data-index="${index}" title="Remove step">×</span>
+                        </div>`);
+                }
+                let selectOptions = state.paints.map(p => `<option value="${p}">${p}</option>`).join('') || '<option disabled>Add paints first</option>';
+                row.innerHTML = `
+                    <div class="part-name-label">${part.name}</div>
+                    <div class="sequence-steps">${sequenceItems.join('')}</div>
+                    <div class="add-paint-control"><select ${state.paints.length===0?'disabled':''}>${selectOptions}</select><button class="btn-add add-step-btn" ${state.paints.length===0?'disabled':''}>Add</button></div>`;
+                partSequenceContainer.appendChild(row);
+            });
+        }
+        
+        function markAsUnsaved() { saveBtn.classList.add('unsaved'); }
+        function markAsSaved() { saveBtn.classList.remove('unsaved'); }
+        function invalidateSchedule() { if (outputDiv.querySelector('.output-step-container')) outputSection.classList.add('invalidated'); }
+        function enterStampMode() {
+            if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
+            state.stampMode.isActive = true; stampToolBtn.style.display = 'none';
+            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${p}">${p}</option>`).join('');
+            state.stampMode.color = stampColorSelect.value;
+            renderAll();
+        }
+        function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; renderAll(); }
+        function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
+        function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
+        function handleAddItems(inputEl, collection, createItem) {
+            const values = inputEl.value.split(',').map(v => v.trim()).filter(Boolean);
+            if (values.length === 0) return;
+            values.forEach(value => { if (!collection.find(item => (item.name || item) === value)) collection.push(createItem(value)); });
+            inputEl.value = ''; invalidateSchedule(); markAsUnsaved(); renderAll();
+        }
+        function handleAddPaint() { handleAddItems(paintInput, state.paints, value => value); }
+        function handleAddPart() { handleAddItems(partInput, state.parts, value => ({ id: nextPartId++, name: value, sequence: [] })); }
+        function handlePaintListClick(e) {
+            if (!e.target.matches('.remove-btn')) return;
+            const paintName = e.target.dataset.paintName;
+            const affectedParts = state.parts.filter(p => p.sequence.includes(paintName));
+            if (affectedParts.length > 0) { if (!confirm(`Warning: This will remove "${paintName}" from all part sequences. Proceed?`)) return; state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintName); }); }
+            state.paints = state.paints.filter(p => p !== paintName); invalidateSchedule(); markAsUnsaved(); renderAll();
+        }
+        function handlePartListClick(e) {
+            if (!e.target.matches('.remove-btn')) return;
+            const partId = parseInt(e.target.dataset.partId);
+            const part = state.parts.find(p => p.id === partId);
+            if (part && confirm(`Remove part "${part.name}"?`)) { state.parts = state.parts.filter(p => p.id !== partId); invalidateSchedule(); markAsUnsaved(); renderAll(); }
+        }
+        function handleSequenceInteraction(e) {
+            const partRow = e.target.closest('.part-sequence-row');
+            if (!partRow) return;
+            const part = state.parts.find(p => p.id === parseInt(partRow.dataset.partId));
+            if (!part) return;
+            if (state.stampMode.isActive && e.target.matches('.drop-target')) {
+                const insertIndex = parseInt(e.target.dataset.insertIndex);
+                part.sequence.splice(insertIndex, 0, state.stampMode.color);
+                markAsUnsaved(); invalidateSchedule(); renderAll(); return;
+            }
+            let stateChanged = false;
+            if (e.target.matches('.add-step-btn')) { const select = partRow.querySelector('select'); if (select.value) { part.sequence.push(select.value); stateChanged = true; } } 
+            else if (e.target.matches('.remove-step-btn')) { part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true; } 
+            else if (e.target.matches('.reorder-btn')) {
+                const index = parseInt(e.target.dataset.index); const dir = e.target.dataset.dir;
+                if (dir === 'left' && index > 0) { [part.sequence[index], part.sequence[index - 1]] = [part.sequence[index - 1], part.sequence[index]]; stateChanged = true; } 
+                else if (dir === 'right' && index < part.sequence.length - 1) { [part.sequence[index], part.sequence[index + 1]] = [part.sequence[index + 1], part.sequence[index]]; stateChanged = true; }
+            }
+            if (stateChanged) { invalidateSchedule(); markAsUnsaved(); renderAll(); }
+        }
+
+        function generateOptimalOrder() { /* ... unchanged ... */
+            const partsWithNoSequence = state.parts.filter(p => p.sequence.length === 0);
+            if (partsWithNoSequence.length > 0) if (!confirm(`Warning: The following parts have no paint sequence and will be ignored: ${partsWithNoSequence.map(p=>p.name).join(', ')}. Continue?`)) return;
+            const allUsedPaints = new Set(state.parts.flatMap(p => p.sequence));
+            const unusedPaints = state.paints.filter(p => !allUsedPaints.has(p));
+            if (unusedPaints.length > 0) if (!confirm(`Warning: The following paints are defined but not used: ${unusedPaints.join(', ')}. Continue?`)) return;
+            outputDiv.innerHTML = ''; outputSection.classList.remove('invalidated');
+            let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
+            if (partsToProcess.length === 0) { outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; return; }
+            const resultSteps = [];
+            while (partsToProcess.some(p => p.currentStep < p.sequence.length)) {
+                const readyPartsByColor = new Map();
+                partsToProcess.filter(p=>p.currentStep < p.sequence.length).forEach(part => { const nextColor = part.sequence[part.currentStep]; if (!readyPartsByColor.has(nextColor)) readyPartsByColor.set(nextColor, []); readyPartsByColor.get(nextColor).push(part); });
+                let priorityChoices = [], lastStepChoices = [];
+                for (const [color, partList] of readyPartsByColor.entries()) { (partList.some(p => p.currentStep < p.sequence.length - 1) ? priorityChoices : lastStepChoices).push({ color, partList, count: partList.length }); }
+                const choices = priorityChoices.length > 0 ? priorityChoices : lastStepChoices;
+                choices.sort((a, b) => b.count - a.count);
+                if (choices.length === 0) break;
+                const bestChoice = choices[0];
+                const completedInThisStep = bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name);
+                bestChoice.completedParts = completedInThisStep;
+                resultSteps.push(bestChoice);
+                bestChoice.partList.forEach(part => part.currentStep++);
+            }
+            resultSteps.forEach(step => {
+                const container = document.createElement('div');
+                container.className = 'output-step-container';
+                const a_step = document.createElement('div');
+                a_step.className = 'output-step';
+                a_step.innerHTML = `<span class="output-icon">🎨</span><span class="output-action">Load <code class="output-color-name">${step.color}</code></span><span class="output-icon">➡️</span><span>Paint: <strong>${step.partList.map(p => p.name).sort().join(', ')}</strong></span>`;
+                container.appendChild(a_step);
+                if (step.completedParts && step.completedParts.length > 0) {
+                    const notice = document.createElement('div');
+                    notice.className = 'completion-notice';
+                    notice.innerHTML = `✔️ Painting complete for: <strong>${step.completedParts.sort().join(', ')}</strong>`;
+                    container.appendChild(notice);
+                } else {
+                    a_step.style.borderBottom = '1px dotted var(--border-color)';
+                }
+                outputDiv.appendChild(container);
+            });
+        }
+        
+        // --- SAVE/LOAD/RESET ---
+        function saveStateToHash() {
+            // **MODIFIED:** Create a "clean" serializable state without transient UI data.
+            const stateToSave = {
+                title: titleInput.value.trim(),
+                paints: state.paints,
+                parts: state.parts
+            };
+
+            const jsonState = JSON.stringify(stateToSave);
+            const base64State = btoa(unescape(encodeURIComponent(jsonState)));
+            window.location.hash = base64State;
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                saveFeedback.textContent = 'Saved! Link copied to clipboard.';
+                saveFeedback.style.opacity = '1';
+                setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
+            });
+            markAsSaved();
+        }
+        function loadStateFromHash() {
+            if (!window.location.hash) return false;
+            try {
+                const jsonState = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
+                const loadedState = JSON.parse(jsonState);
+                if (loadedState && loadedState.paints && loadedState.parts) {
+                    // Reconstitute the full state, including the default transient UI state
+                    state = { ...loadedState, stampMode: { isActive: false, color: null } };
+                    nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), 0) + 1;
+                    return true;
+                }
+            } catch (e) {
+                console.error("Failed to load state from hash:", e);
+                alert("Could not load project. The link may be corrupted.");
+                return false;
+            }
+            return false;
+        }
+        function _performReset() {
+            state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
+            nextPartId = 0;
+            outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
+            outputSection.classList.remove('invalidated');
+            history.pushState("", document.title, window.location.pathname + window.location.search);
+            markAsSaved();
+            exitStampMode(); // Ensure we are not in stamp mode after reset
+        }
+        function handleReset() { if (confirm('Reset everything? This will clear all data.')) _performReset(); }
+        function loadInitialData() {
+            _performReset();
+            state.title = 'Example Project';
+            state.paints.push('primer', 'green', 'blue', 'red', 'white', 'clearcoat');
+            state.parts.push(
+                { id: nextPartId++, name: 'Part A', sequence: ['primer', 'green', 'clearcoat'] },
+                { id: nextPartId++, name: 'Part B', sequence: ['primer', 'blue', 'clearcoat'] },
+                { id: nextPartId++, name: 'Part C', sequence: ['primer', 'red', 'white'] }
+            );
+            renderAll();
+            markAsUnsaved();
+        }
+
+        // --- EVENT LISTENERS & INITIALIZATION ---
+        addPaintBtn.addEventListener('click', handleAddPaint); paintInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPaint()); paintList.addEventListener('click', handlePaintListClick);
+        addPartBtn.addEventListener('click', handleAddPart); partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart()); partList.addEventListener('click', handlePartListClick);
+        partSequenceContainer.addEventListener('click', handleSequenceInteraction);
+        titleInput.addEventListener('input', handleTitleChange); saveBtn.addEventListener('click', saveStateToHash);
+        generateBtn.addEventListener('click', generateOptimalOrder); resetBtn.addEventListener('click', handleReset);
+        stampToolBtn.addEventListener('click', enterStampMode); exitStampBtn.addEventListener('click', exitStampMode); stampColorSelect.addEventListener('change', handleStampColorChange);
+        
+        if (!loadStateFromHash()) loadInitialData(); else { document.title = state.title + " - Paint Sequencer"; renderAll(); }
+    });
+    </script>
+</body>
+</html>
