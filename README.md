@@ -1,7 +1,7 @@
 
 ---
 
-# 🎨 Advanced Paint Sequencer
+# 🎨 Paint Sequencer
 
 A zero-installation, single-file web tool designed for model builders, hobbyists, and anyone performing sequential painting tasks. This application calculates the most efficient painting order to minimize the number of color changes and cleaning sessions, saving you time and effort.
 

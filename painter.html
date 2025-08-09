@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Paint Sequencer</title>
+    <title>Paint Sequencer</title>
     <style>
         :root {
             --bg-color: #f0f2f5;
@@ -90,7 +90,7 @@
     <div class="container">
         <!-- Main Header & Title -->
         <div class="card">
-            <h1>🎨 Advanced Paint Sequencer</h1>
+            <h1>🎨 Paint Sequencer</h1>
             <input type="text" id="title-input" class="title-input" placeholder="Enter Project Title">
         </div>
 
@@ -144,7 +144,7 @@
         <div class="card" id="output-section">
             <div class="card-header">
                 <h2>✔️ Optimized Schedule</h2>
-                <small class="legend">🚀 = Possible starting step</small>
+                <small class="legend">⭐ = Possible starting step</small>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
         </div>
@@ -307,9 +307,9 @@
                 const a_step = document.createElement('div');
                 a_step.className = 'output-step';
                 
-                const startIndicator = step.isStartable ? `<span class="output-icon start-indicator" title="This is a possible starting step">🚀</span>` : '';
+                const startIndicator = step.isStartable ? `<span class="output-icon start-indicator" title="This is a possible starting step">⭐</span>` : '';
                 
-                a_step.innerHTML = `${startIndicator}<span class="output-icon">🎨</span><span class="output-action">Load <code class="output-color-name">${step.color}</code></span><span class="output-icon">➡️</span><span>Paint: <strong>${step.partList.map(p => p.name).sort().join(', ')}</strong></span>`;
+                a_step.innerHTML = `<span class="output-icon">🎨</span><span class="output-action">Load <code class="output-color-name">${step.color}</code></span><span class="output-icon">➡️</span>${startIndicator}<span> Paint: <strong>${step.partList.map(p => p.name).sort().join(', ')}</strong></span>`;
                 container.appendChild(a_step);
 
                 if (step.completedParts && step.completedParts.length > 0) {
