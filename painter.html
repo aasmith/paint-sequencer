@@ -23,9 +23,10 @@
         body { font-family: var(--font-family); line-height: 1.6; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 24px; }
         .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
         .card { background-color: var(--surface-color); box-shadow: var(--shadow); border-radius: 8px; padding: 20px; position: relative; }
-        h1, h2 { margin-top: 0; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
-        h1 { font-size: 1.8rem; }
-        h2 { font-size: 1.4rem; }
+        .card-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
+        .card-header h2 { border: none; padding: 0; margin: 0; }
+        .card-header .legend { color: var(--text-secondary-color); font-size: 0.9em; white-space: nowrap; }
+        h1 { font-size: 1.8rem; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;}
         .title-input { font-size: 1.2rem; font-weight: 600; border: none; border-bottom: 2px solid transparent; width: 100%; padding: 4px; margin-bottom: 20px; transition: border-color 0.2s; }
         .title-input:focus { outline: none; border-bottom-color: var(--primary-color); }
         .setup-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
@@ -56,10 +57,11 @@
         .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
         .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
-        .output-step { display: flex; align-items: center; gap: 15px; padding: 10px 10px 5px 10px; }
+        .output-step { display: flex; align-items: center; gap: 10px; padding: 10px 10px 5px 10px; }
         .completion-notice { color: var(--text-secondary-color); font-size: 0.9em; padding: 0px 10px 10px 48px; border-bottom: 1px dotted var(--border-color); }
         .output-step-container:last-child .completion-notice, .output-step-container:last-child .output-step { border-bottom: none; }
-        .output-icon { font-size: 1.5rem; }
+        .output-icon { font-size: 1.5rem; line-height: 1; }
+        .start-indicator { cursor: help; }
         .output-action { font-weight: 600; width: 220px;}
         .output-color-name { background: #eee; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
         #output-section.invalidated #output { opacity: 0.4; }
@@ -96,7 +98,7 @@
         <div class="card">
             <div class="setup-container">
                 <div id="paint-management">
-                    <h2>Available Paints</h2>
+                    <div class="card-header"><h2>Available Paints</h2></div>
                     <div class="input-group">
                         <input type="text" id="paint-input" placeholder="Add paints, comma-separated">
                         <button id="add-paint-btn" class="btn-add">Add</button>
@@ -104,7 +106,7 @@
                     <ul id="paint-list" class="item-list"></ul>
                 </div>
                 <div id="part-management">
-                    <h2>📦 Parts to be Painted</h2>
+                    <div class="card-header"><h2>📦 Parts to be Painted</h2></div>
                     <div class="input-group">
                         <input type="text" id="part-input" placeholder="Add parts, comma-separated">
                         <button id="add-part-btn" class="btn-add">Add</button>
@@ -116,8 +118,8 @@
 
         <!-- Sequence Builder -->
         <div class="card" id="sequence-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 0;">
-                <h2 style="border: none; margin: 0; padding: 0;">Assign Paint Sequence</h2>
+            <div class="card-header">
+                <h2>Assign Paint Sequence</h2>
                 <button id="stamp-tool-btn" class="btn-stamp">🖌️ Stamp Tool</button>
             </div>
             <div id="stamp-tool-toolbar">
@@ -140,7 +142,10 @@
 
         <!-- Output -->
         <div class="card" id="output-section">
-            <h2>✔️ Optimized Schedule</h2>
+            <div class="card-header">
+                <h2>✔️ Optimized Schedule</h2>
+                <small class="legend">🚀 = Possible starting step</small>
+            </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
         </div>
     </div>
@@ -235,20 +240,20 @@
         }
         function handleAddPaint() { handleAddItems(paintInput, state.paints, value => value); }
         function handleAddPart() { handleAddItems(partInput, state.parts, value => ({ id: nextPartId++, name: value, sequence: [] })); }
-        function handlePaintListClick(e) {
+        function handlePaintListClick(e) { /* ... unchanged ... */
             if (!e.target.matches('.remove-btn')) return;
             const paintName = e.target.dataset.paintName;
             const affectedParts = state.parts.filter(p => p.sequence.includes(paintName));
             if (affectedParts.length > 0) { if (!confirm(`Warning: This will remove "${paintName}" from all part sequences. Proceed?`)) return; state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintName); }); }
             state.paints = state.paints.filter(p => p !== paintName); invalidateSchedule(); markAsUnsaved(); renderAll();
         }
-        function handlePartListClick(e) {
+        function handlePartListClick(e) { /* ... unchanged ... */
             if (!e.target.matches('.remove-btn')) return;
             const partId = parseInt(e.target.dataset.partId);
             const part = state.parts.find(p => p.id === partId);
             if (part && confirm(`Remove part "${part.name}"?`)) { state.parts = state.parts.filter(p => p.id !== partId); invalidateSchedule(); markAsUnsaved(); renderAll(); }
         }
-        function handleSequenceInteraction(e) {
+        function handleSequenceInteraction(e) { /* ... unchanged ... */
             const partRow = e.target.closest('.part-sequence-row');
             if (!partRow) return;
             const part = state.parts.find(p => p.id === parseInt(partRow.dataset.partId));
@@ -269,7 +274,7 @@
             if (stateChanged) { invalidateSchedule(); markAsUnsaved(); renderAll(); }
         }
 
-        function generateOptimalOrder() { /* ... unchanged ... */
+        function generateOptimalOrder() {
             const partsWithNoSequence = state.parts.filter(p => p.sequence.length === 0);
             if (partsWithNoSequence.length > 0) if (!confirm(`Warning: The following parts have no paint sequence and will be ignored: ${partsWithNoSequence.map(p=>p.name).join(', ')}. Continue?`)) return;
             const allUsedPaints = new Set(state.parts.flatMap(p => p.sequence));
@@ -288,18 +293,25 @@
                 choices.sort((a, b) => b.count - a.count);
                 if (choices.length === 0) break;
                 const bestChoice = choices[0];
-                const completedInThisStep = bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name);
-                bestChoice.completedParts = completedInThisStep;
+                
+                bestChoice.isStartable = bestChoice.partList.every(p => p.currentStep === 0);
+                bestChoice.completedParts = bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name);
+                
                 resultSteps.push(bestChoice);
                 bestChoice.partList.forEach(part => part.currentStep++);
             }
+
             resultSteps.forEach(step => {
                 const container = document.createElement('div');
                 container.className = 'output-step-container';
                 const a_step = document.createElement('div');
                 a_step.className = 'output-step';
-                a_step.innerHTML = `<span class="output-icon">🎨</span><span class="output-action">Load <code class="output-color-name">${step.color}</code></span><span class="output-icon">➡️</span><span>Paint: <strong>${step.partList.map(p => p.name).sort().join(', ')}</strong></span>`;
+                
+                const startIndicator = step.isStartable ? `<span class="output-icon start-indicator" title="This is a possible starting step">🚀</span>` : '';
+                
+                a_step.innerHTML = `${startIndicator}<span class="output-icon">🎨</span><span class="output-action">Load <code class="output-color-name">${step.color}</code></span><span class="output-icon">➡️</span><span>Paint: <strong>${step.partList.map(p => p.name).sort().join(', ')}</strong></span>`;
                 container.appendChild(a_step);
+
                 if (step.completedParts && step.completedParts.length > 0) {
                     const notice = document.createElement('div');
                     notice.className = 'completion-notice';
@@ -312,32 +324,20 @@
             });
         }
         
-        // --- SAVE/LOAD/RESET ---
-        function saveStateToHash() {
-            // **MODIFIED:** Create a "clean" serializable state without transient UI data.
-            const stateToSave = {
-                title: titleInput.value.trim(),
-                paints: state.paints,
-                parts: state.parts
-            };
-
+        function saveStateToHash() { /* ... unchanged ... */
+            const stateToSave = { title: titleInput.value.trim(), paints: state.paints, parts: state.parts };
             const jsonState = JSON.stringify(stateToSave);
             const base64State = btoa(unescape(encodeURIComponent(jsonState)));
             window.location.hash = base64State;
-            navigator.clipboard.writeText(window.location.href).then(() => {
-                saveFeedback.textContent = 'Saved! Link copied to clipboard.';
-                saveFeedback.style.opacity = '1';
-                setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
-            });
+            navigator.clipboard.writeText(window.location.href).then(() => { saveFeedback.textContent = 'Saved! Link copied to clipboard.'; saveFeedback.style.opacity = '1'; setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000); });
             markAsSaved();
         }
-        function loadStateFromHash() {
+        function loadStateFromHash() { /* ... unchanged ... */
             if (!window.location.hash) return false;
             try {
                 const jsonState = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
                 const loadedState = JSON.parse(jsonState);
                 if (loadedState && loadedState.paints && loadedState.parts) {
-                    // Reconstitute the full state, including the default transient UI state
                     state = { ...loadedState, stampMode: { isActive: false, color: null } };
                     nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), 0) + 1;
                     return true;
@@ -349,17 +349,17 @@
             }
             return false;
         }
-        function _performReset() {
+        function _performReset() { /* ... unchanged ... */
             state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0;
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
             outputSection.classList.remove('invalidated');
             history.pushState("", document.title, window.location.pathname + window.location.search);
             markAsSaved();
-            exitStampMode(); // Ensure we are not in stamp mode after reset
+            exitStampMode();
         }
         function handleReset() { if (confirm('Reset everything? This will clear all data.')) _performReset(); }
-        function loadInitialData() {
+        function loadInitialData() { /* ... unchanged ... */
             _performReset();
             state.title = 'Example Project';
             state.paints.push('primer', 'green', 'blue', 'red', 'white', 'clearcoat');
