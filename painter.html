@@ -57,12 +57,16 @@
         .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
         .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
-        .output-step { display: flex; align-items: center; gap: 10px; padding: 10px 10px 5px 10px; }
+        .output-step-container { display: flex; align-items: center; transition: background-color 0.3s; }
+        .output-step-container .step-checkbox { margin-right: 15px; transform: scale(1.5); }
+        .output-step { display: flex; align-items: center; gap: 10px; padding: 10px 10px 5px 10px; flex-grow: 1; }
         .completion-notice { color: var(--text-secondary-color); font-size: 0.9em; padding: 0px 10px 10px 48px; border-bottom: 1px dotted var(--border-color); }
-        .output-step-container:last-child .completion-notice, .output-step-container:last-child .output-step { border-bottom: none; }
+        .output-step-wrapper:last-child .completion-notice, .output-step-wrapper:last-child .output-step { border-bottom: none; }
         .output-icon { font-size: 1.5rem; line-height: 1; }
-        .start-indicator { cursor: help; }
-        .output-action { font-weight: 600; width: 220px;}
+        .start-indicator { cursor: help; font-size: 1.5rem; line-height: 1; opacity: 0; transition: opacity 0.3s; width: 0; }
+        .is-startable .start-indicator { opacity: 1; width: auto; margin-right: 10px; }
+        .is-completed { opacity: 0.5; text-decoration: line-through; }
+        .output-action { font-weight: 600; min-width: 220px;}
         .output-color-name { background: #eee; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
         #output-section.invalidated #output { opacity: 0.4; }
         #output-section.invalidated::after { content: 'Schedule outdated. Please regenerate.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 100, 0.85); border: 1px solid #e0e060; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-align: center; }
@@ -88,13 +92,11 @@
 <body>
 
     <div class="container">
-        <!-- Main Header & Title -->
         <div class="card">
             <h1>🎨 Paint Sequencer</h1>
             <input type="text" id="title-input" class="title-input" placeholder="Enter Project Title">
         </div>
 
-        <!-- Setup Cards -->
         <div class="card">
             <div class="setup-container">
                 <div id="paint-management">
@@ -116,7 +118,6 @@
             </div>
         </div>
 
-        <!-- Sequence Builder -->
         <div class="card" id="sequence-card">
             <div class="card-header">
                 <h2>Assign Paint Sequence</h2>
@@ -130,7 +131,6 @@
             <div id="part-sequence-container"><p style="color: var(--text-secondary-color);">Add parts to begin.</p></div>
         </div>
         
-        <!-- Controls -->
         <div class="card">
             <div class="main-controls">
                 <button id="save-btn" class="btn-save">💾 Save & Copy Link</button>
@@ -140,11 +140,10 @@
             <p style="text-align: center; margin: 10px 0 0 0;"><span id="save-feedback"></span></p>
         </div>
 
-        <!-- Output -->
         <div class="card" id="output-section">
             <div class="card-header">
                 <h2>✔️ Optimized Schedule</h2>
-                <small class="legend">⭐ = Possible starting step</small>
+                <small class="legend">⭐ = Ready to start!</small>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
         </div>
@@ -152,11 +151,10 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        // STATE
         let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
+        let scheduleData = []; // Holds the generated schedule with dependencies
 
-        //ELEMENTS
         const sequenceCard = document.getElementById('sequence-card');
         const stampToolBtn = document.getElementById('stamp-tool-btn');
         const stampToolToolbar = document.getElementById('stamp-tool-toolbar');
@@ -221,7 +219,8 @@
         
         function markAsUnsaved() { saveBtn.classList.add('unsaved'); }
         function markAsSaved() { saveBtn.classList.remove('unsaved'); }
-        function invalidateSchedule() { if (outputDiv.querySelector('.output-step-container')) outputSection.classList.add('invalidated'); }
+        function invalidateSchedule() { if (outputDiv.querySelector('.output-step-wrapper')) outputSection.classList.add('invalidated'); }
+
         function enterStampMode() {
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
             state.stampMode.isActive = true; stampToolBtn.style.display = 'none';
@@ -229,44 +228,63 @@
             state.stampMode.color = stampColorSelect.value;
             renderAll();
         }
-        function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; renderAll(); }
-        function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
+
+        function exitStampMode() {
+            state.stampMode.isActive = false; stampToolBtn.style.display = 'block';
+            renderAll();
+        }
+
         function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
+        
         function handleAddItems(inputEl, collection, createItem) {
             const values = inputEl.value.split(',').map(v => v.trim()).filter(Boolean);
             if (values.length === 0) return;
             values.forEach(value => { if (!collection.find(item => (item.name || item) === value)) collection.push(createItem(value)); });
             inputEl.value = ''; invalidateSchedule(); markAsUnsaved(); renderAll();
         }
+
         function handleAddPaint() { handleAddItems(paintInput, state.paints, value => value); }
         function handleAddPart() { handleAddItems(partInput, state.parts, value => ({ id: nextPartId++, name: value, sequence: [] })); }
-        function handlePaintListClick(e) { /* ... unchanged ... */
+        
+        function handlePaintListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
             const paintName = e.target.dataset.paintName;
             const affectedParts = state.parts.filter(p => p.sequence.includes(paintName));
-            if (affectedParts.length > 0) { if (!confirm(`Warning: This will remove "${paintName}" from all part sequences. Proceed?`)) return; state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintName); }); }
-            state.paints = state.paints.filter(p => p !== paintName); invalidateSchedule(); markAsUnsaved(); renderAll();
+            if (affectedParts.length > 0) {
+                if (!confirm(`Warning: This will remove "${paintName}" from all part sequences. Proceed?`)) return;
+                state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintName); });
+            }
+            state.paints = state.paints.filter(p => p !== paintName);
+            invalidateSchedule(); markAsUnsaved(); renderAll();
         }
-        function handlePartListClick(e) { /* ... unchanged ... */
+
+        function handlePartListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
             const partId = parseInt(e.target.dataset.partId);
             const part = state.parts.find(p => p.id === partId);
-            if (part && confirm(`Remove part "${part.name}"?`)) { state.parts = state.parts.filter(p => p.id !== partId); invalidateSchedule(); markAsUnsaved(); renderAll(); }
+            if (part && confirm(`Remove part "${part.name}"?`)) {
+                state.parts = state.parts.filter(p => p.id !== partId);
+                invalidateSchedule(); markAsUnsaved(); renderAll();
+            }
         }
-        function handleSequenceInteraction(e) { /* ... unchanged ... */
+        
+        function handleSequenceInteraction(e) {
             const partRow = e.target.closest('.part-sequence-row');
             if (!partRow) return;
             const part = state.parts.find(p => p.id === parseInt(partRow.dataset.partId));
             if (!part) return;
             if (state.stampMode.isActive && e.target.matches('.drop-target')) {
                 const insertIndex = parseInt(e.target.dataset.insertIndex);
-                part.sequence.splice(insertIndex, 0, state.stampMode.color);
+                part.sequence.splice(insertIndex, 0, state.stampMode.color || state.paints[0]);
                 markAsUnsaved(); invalidateSchedule(); renderAll(); return;
             }
             let stateChanged = false;
-            if (e.target.matches('.add-step-btn')) { const select = partRow.querySelector('select'); if (select.value) { part.sequence.push(select.value); stateChanged = true; } } 
-            else if (e.target.matches('.remove-step-btn')) { part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true; } 
-            else if (e.target.matches('.reorder-btn')) {
+            if (e.target.matches('.add-step-btn')) {
+                const select = partRow.querySelector('select');
+                if (select.value) { part.sequence.push(select.value); stateChanged = true; }
+            } else if (e.target.matches('.remove-step-btn')) {
+                part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true;
+            } else if (e.target.matches('.reorder-btn')) {
                 const index = parseInt(e.target.dataset.index); const dir = e.target.dataset.dir;
                 if (dir === 'left' && index > 0) { [part.sequence[index], part.sequence[index - 1]] = [part.sequence[index - 1], part.sequence[index]]; stateChanged = true; } 
                 else if (dir === 'right' && index < part.sequence.length - 1) { [part.sequence[index], part.sequence[index + 1]] = [part.sequence[index + 1], part.sequence[index]]; stateChanged = true; }
@@ -276,70 +294,152 @@
 
         function generateOptimalOrder() {
             const partsWithNoSequence = state.parts.filter(p => p.sequence.length === 0);
-            if (partsWithNoSequence.length > 0) if (!confirm(`Warning: The following parts have no paint sequence and will be ignored: ${partsWithNoSequence.map(p=>p.name).join(', ')}. Continue?`)) return;
-            const allUsedPaints = new Set(state.parts.flatMap(p => p.sequence));
-            const unusedPaints = state.paints.filter(p => !allUsedPaints.has(p));
-            if (unusedPaints.length > 0) if (!confirm(`Warning: The following paints are defined but not used: ${unusedPaints.join(', ')}. Continue?`)) return;
+            if (partsWithNoSequence.length > 0) {
+                if (!confirm(`Warning: The following parts have no paint sequence and will be ignored: ${partsWithNoSequence.map(p=>p.name).join(', ')}. Continue?`)) return;
+            }
             outputDiv.innerHTML = ''; outputSection.classList.remove('invalidated');
-            let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
-            if (partsToProcess.length === 0) { outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; return; }
-            const resultSteps = [];
+            scheduleData = []; // Clear previous schedule data
+            
+            let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
+            if (partsToProcess.length === 0) {
+                outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>';
+                return;
+            }
+            
+            const partColorToStepIndex = new Map();
+            let stepIdCounter = 0;
+
             while (partsToProcess.some(p => p.currentStep < p.sequence.length)) {
                 const readyPartsByColor = new Map();
-                partsToProcess.filter(p=>p.currentStep < p.sequence.length).forEach(part => { const nextColor = part.sequence[part.currentStep]; if (!readyPartsByColor.has(nextColor)) readyPartsByColor.set(nextColor, []); readyPartsByColor.get(nextColor).push(part); });
+                partsToProcess.filter(p=>p.currentStep < p.sequence.length).forEach(part => {
+                    const nextColor = part.sequence[part.currentStep];
+                    if (!readyPartsByColor.has(nextColor)) readyPartsByColor.set(nextColor, []);
+                    readyPartsByColor.get(nextColor).push(part);
+                });
+                
                 let priorityChoices = [], lastStepChoices = [];
-                for (const [color, partList] of readyPartsByColor.entries()) { (partList.some(p => p.currentStep < p.sequence.length - 1) ? priorityChoices : lastStepChoices).push({ color, partList, count: partList.length }); }
+                for (const [color, partList] of readyPartsByColor.entries()) {
+                    (partList.some(p => p.currentStep < p.sequence.length - 1) ? priorityChoices : lastStepChoices).push({ color, partList, count: partList.length });
+                }
                 const choices = priorityChoices.length > 0 ? priorityChoices : lastStepChoices;
                 choices.sort((a, b) => b.count - a.count);
                 if (choices.length === 0) break;
+                
                 const bestChoice = choices[0];
+                const stepId = stepIdCounter++;
+
+                scheduleData.push({
+                    id: stepId,
+                    color: bestChoice.color,
+                    partList: bestChoice.partList.map(p => p.name),
+                    completedParts: bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name),
+                    dependencies: new Set()
+                });
                 
-                bestChoice.isStartable = bestChoice.partList.every(p => p.currentStep === 0);
-                bestChoice.completedParts = bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name);
-                
-                resultSteps.push(bestChoice);
-                bestChoice.partList.forEach(part => part.currentStep++);
+                bestChoice.partList.forEach(part => {
+                    partColorToStepIndex.set(`${part.id}_${part.sequence[part.currentStep]}`, stepId);
+                    part.currentStep++;
+                });
             }
 
-            resultSteps.forEach(step => {
+            // Build dependency graph
+            partsToProcess.forEach(part => {
+                for(let i = 1; i < part.originalSequence.length; i++) {
+                    const prevColor = part.originalSequence[i-1];
+                    const currentColor = part.originalSequence[i];
+                    const prevStepId = partColorToStepIndex.get(`${part.id}_${prevColor}`);
+                    const currentStepId = partColorToStepIndex.get(`${part.id}_${currentColor}`);
+                    if(prevStepId !== undefined && currentStepId !== undefined) {
+                        scheduleData[currentStepId].dependencies.add(prevStepId);
+                    }
+                }
+            });
+            scheduleData.forEach(step => step.dependencies = Array.from(step.dependencies)); // Convert Set to Array
+
+            // Render schedule
+            scheduleData.forEach((step, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'output-step-wrapper';
+                wrapper.id = `step-wrapper-${index}`;
+
                 const container = document.createElement('div');
                 container.className = 'output-step-container';
-                const a_step = document.createElement('div');
-                a_step.className = 'output-step';
-                
-                const startIndicator = step.isStartable ? `<span class="output-icon start-indicator" title="This is a possible starting step">⭐</span>` : '';
-                
-                a_step.innerHTML = `<span class="output-icon">🎨</span><span class="output-action">Load <code class="output-color-name">${step.color}</code></span><span class="output-icon">➡️</span>${startIndicator}<span> Paint: <strong>${step.partList.map(p => p.name).sort().join(', ')}</strong></span>`;
-                container.appendChild(a_step);
 
-                if (step.completedParts && step.completedParts.length > 0) {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'step-checkbox';
+                checkbox.dataset.stepId = index;
+                
+                const stepDiv = document.createElement('div');
+                stepDiv.className = 'output-step';
+                stepDiv.innerHTML = `
+                    <span class="start-indicator" title="Ready to start!">⭐</span>
+                    <span class="output-icon">🎨</span>
+                    <span class="output-action">Load <code class="output-color-name">${step.color}</code></span>
+                    <span class="output-icon">➡️</span>
+                    <span>Paint: <strong>${step.partList.sort().join(', ')}</strong></span>`;
+                
+                container.appendChild(checkbox);
+                container.appendChild(stepDiv);
+                wrapper.appendChild(container);
+
+                if (step.completedParts.length > 0) {
                     const notice = document.createElement('div');
                     notice.className = 'completion-notice';
                     notice.innerHTML = `✔️ Painting complete for: <strong>${step.completedParts.sort().join(', ')}</strong>`;
-                    container.appendChild(notice);
+                    wrapper.appendChild(notice);
                 } else {
-                    a_step.style.borderBottom = '1px dotted var(--border-color)';
+                    container.style.borderBottom = '1px dotted var(--border-color)';
                 }
-                outputDiv.appendChild(container);
+                outputDiv.appendChild(wrapper);
+            });
+            updateStartableSteps();
+        }
+        
+        function updateStartableSteps() {
+            const completedStepIds = new Set(
+                Array.from(outputDiv.querySelectorAll('.step-checkbox:checked'))
+                     .map(cb => parseInt(cb.dataset.stepId))
+            );
+
+            scheduleData.forEach((step, index) => {
+                const wrapper = document.getElementById(`step-wrapper-${index}`);
+                if (!wrapper) return;
+
+                const isCompleted = completedStepIds.has(index);
+                wrapper.classList.toggle('is-completed', isCompleted);
+
+                const areDependenciesMet = step.dependencies.every(depId => completedStepIds.has(depId));
+                const isStartable = !isCompleted && areDependenciesMet;
+                wrapper.classList.toggle('is-startable', isStartable);
             });
         }
         
-        function saveStateToHash() { /* ... unchanged ... */
-            const stateToSave = { title: titleInput.value.trim(), paints: state.paints, parts: state.parts };
+        function saveStateToHash() {
+            const stateToSave = {
+                title: titleInput.value.trim(),
+                paints: state.paints,
+                parts: state.parts
+            };
             const jsonState = JSON.stringify(stateToSave);
             const base64State = btoa(unescape(encodeURIComponent(jsonState)));
             window.location.hash = base64State;
-            navigator.clipboard.writeText(window.location.href).then(() => { saveFeedback.textContent = 'Saved! Link copied to clipboard.'; saveFeedback.style.opacity = '1'; setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000); });
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                saveFeedback.textContent = 'Saved! Link copied to clipboard.';
+                saveFeedback.style.opacity = '1';
+                setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
+            });
             markAsSaved();
         }
-        function loadStateFromHash() { /* ... unchanged ... */
+
+        function loadStateFromHash() {
             if (!window.location.hash) return false;
             try {
                 const jsonState = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
                 const loadedState = JSON.parse(jsonState);
                 if (loadedState && loadedState.paints && loadedState.parts) {
                     state = { ...loadedState, stampMode: { isActive: false, color: null } };
-                    nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), 0) + 1;
+                    nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1;
                     return true;
                 }
             } catch (e) {
@@ -349,38 +449,61 @@
             }
             return false;
         }
-        function _performReset() { /* ... unchanged ... */
+
+        function _performReset() {
             state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0;
+            scheduleData = [];
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
             outputSection.classList.remove('invalidated');
             history.pushState("", document.title, window.location.pathname + window.location.search);
             markAsSaved();
             exitStampMode();
         }
-        function handleReset() { if (confirm('Reset everything? This will clear all data.')) _performReset(); }
-        function loadInitialData() { /* ... unchanged ... */
+
+        function handleReset() {
+            if (confirm('Reset everything? This will clear all data.')) {
+                _performReset();
+                renderAll();
+            }
+        }
+        
+        function loadInitialData() {
             _performReset();
-            state.title = 'Example Project';
-            state.paints.push('primer', 'green', 'blue', 'red', 'white', 'clearcoat');
+            state.title = 'Example Gundam Model';
+            state.paints.push('primer', 'internal-frame-grey', 'white', 'blue', 'red', 'yellow', 'clearcoat');
             state.parts.push(
-                { id: nextPartId++, name: 'Part A', sequence: ['primer', 'green', 'clearcoat'] },
-                { id: nextPartId++, name: 'Part B', sequence: ['primer', 'blue', 'clearcoat'] },
-                { id: nextPartId++, name: 'Part C', sequence: ['primer', 'red', 'white'] }
+                { id: nextPartId++, name: 'Chest Armor', sequence: ['primer', 'blue', 'white', 'clearcoat'] },
+                { id: nextPartId++, name: 'Leg Frame', sequence: ['internal-frame-grey'] },
+                { id: nextPartId++, name: 'Head V-Fin', sequence: ['primer', 'yellow', 'clearcoat'] }
             );
             renderAll();
             markAsUnsaved();
         }
 
-        // --- EVENT LISTENERS & INITIALIZATION ---
-        addPaintBtn.addEventListener('click', handleAddPaint); paintInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPaint()); paintList.addEventListener('click', handlePaintListClick);
-        addPartBtn.addEventListener('click', handleAddPart); partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart()); partList.addEventListener('click', handlePartListClick);
+        addPaintBtn.addEventListener('click', handleAddPaint);
+        paintInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPaint());
+        paintList.addEventListener('click', handlePaintListClick);
+        addPartBtn.addEventListener('click', handleAddPart);
+        partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart());
+        partList.addEventListener('click', handlePartListClick);
         partSequenceContainer.addEventListener('click', handleSequenceInteraction);
-        titleInput.addEventListener('input', handleTitleChange); saveBtn.addEventListener('click', saveStateToHash);
-        generateBtn.addEventListener('click', generateOptimalOrder); resetBtn.addEventListener('click', handleReset);
-        stampToolBtn.addEventListener('click', enterStampMode); exitStampBtn.addEventListener('click', exitStampMode); stampColorSelect.addEventListener('change', handleStampColorChange);
+        titleInput.addEventListener('input', handleTitleChange);
+        saveBtn.addEventListener('click', saveStateToHash);
+        generateBtn.addEventListener('click', generateOptimalOrder);
+        resetBtn.addEventListener('click', handleReset);
+        stampToolBtn.addEventListener('click', enterStampMode);
+        exitStampBtn.addEventListener('click', exitStampMode);
+        outputDiv.addEventListener('change', (e) => {
+            if (e.target.matches('.step-checkbox')) updateStartableSteps();
+        });
         
-        if (!loadStateFromHash()) loadInitialData(); else { document.title = state.title + " - Paint Sequencer"; renderAll(); }
+        if (!loadStateFromHash()) {
+            loadInitialData();
+        } else {
+            document.title = state.title + " - Paint Sequencer";
+            renderAll();
+        }
     });
     </script>
 </body>
