@@ -65,9 +65,8 @@
         .completion-notice { color: var(--text-secondary-color); font-size: 0.9em; padding: 0px 10px 10px 48px; border-bottom: 1px dotted var(--border-color); }
         .output-step-wrapper:last-child .completion-notice, .output-step-wrapper:last-child .output-step { border-bottom: none; }
         .output-icon { font-size: 1.5rem; line-height: 1; }
-        .start-indicator { cursor: help; font-size: 1.5rem; line-height: 1; opacity: 0; transition: opacity 0.3s; width: 0; }
-        .is-startable .start-indicator { opacity: 1; width: auto; margin-right: 10px; }
-        .is-completed { opacity: 0.5; text-decoration: line-through; }
+        .start-indicator { cursor: help; font-size: 1.5rem; line-height: 1; }
+        .output-wrapper.is-completed { opacity: 0.5; text-decoration: line-through; }
         .output-action { font-weight: 600; min-width: 220px;}
         .output-color-name { background: #eee; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
         #output-section.invalidated #output { opacity: 0.4; }
@@ -155,7 +154,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
-        let scheduleData = [];
+        let scheduleData = { steps: [], completedStepIds: new Set() };
 
         const sequenceCard = document.getElementById('sequence-card');
         const stampToolBtn = document.getElementById('stamp-tool-btn');
@@ -192,14 +191,13 @@
         function renderSequenceBuilder() {
             partSequenceContainer.innerHTML = '';
             if (state.parts.length === 0) {
-                partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>';
-                return;
+                partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>'; return;
             }
             const isStamping = state.stampMode.isActive;
             sequenceCard.classList.toggle('stamp-mode-active', isStamping);
             state.parts.forEach(part => {
                 const row = document.createElement('div');
-                row.className = 'part-sequence-row';
+                row.className = 'part-sequence-row';;
                 row.dataset.partId = part.id;
                 let sequenceItems = [];
                 if (isStamping) {
@@ -227,8 +225,7 @@
         }
         
         function markAsUnsaved() { saveBtn.classList.add('unsaved'); }
-        function markAsSaved() { saveBtn.classList.remove('unsaved'); }
-        function invalidateSchedule() { if (outputDiv.querySelector('.output-step-wrapper')) outputSection.classList.add('invalidated'); }
+        function invalidateSchedule() { if (scheduleData.steps.length > 0) outputSection.classList.add('invalidated'); }
 
         function enterStampMode() {
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
@@ -239,12 +236,7 @@
             renderAll();
         }
 
-        function exitStampMode() {
-            state.stampMode.isActive = false;
-            stampToolBtn.style.display = 'block';
-            renderAll();
-        }
-
+        function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; renderAll(); }
         function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
         function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
         
@@ -264,8 +256,7 @@
         function handlePaintListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
             const paintName = e.target.dataset.paintName;
-            const affectedParts = state.parts.filter(p => p.sequence.includes(paintName));
-            if (affectedParts.length > 0) {
+            if (state.parts.some(p => p.sequence.includes(paintName))) {
                 if (!confirm(`Warning: This will remove "${paintName}" from all part sequences. Proceed?`)) return;
                 state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintName); });
             }
@@ -285,30 +276,28 @@
 
         function handleNameEdit(e, listType) {
             const target = e.target;
-            if (e.type === 'keydown') {
-                if (e.key === 'Enter') { e.preventDefault(); target.blur(); }
-                if (e.key === 'Escape') { 
-                    if (listType === 'paint') target.textContent = target.dataset.originalName;
-                    else if (listType === 'part') {
-                        const part = state.parts.find(p => p.id === parseInt(target.dataset.partId));
-                        if(part) target.textContent = part.name;
-                    }
-                    target.blur(); 
-                 }
-                return;
-            }
-
-            if (e.type === 'blur') {
+            const saveEdit = () => {
                 const newValue = target.textContent.trim();
-                let oldValue;
+                let oldValue, collection, isDuplicate;
                 
                 if (listType === 'paint') {
                     oldValue = target.dataset.originalName;
-                    if (newValue === oldValue) return;
-                    
-                    if (!newValue) { alert("Paint name cannot be empty."); target.textContent = oldValue; return; }
-                    if (state.paints.includes(newValue)) { alert(`Paint name "${newValue}" already exists.`); target.textContent = oldValue; return; }
+                    collection = state.paints;
+                    isDuplicate = collection.includes(newValue);
+                } else {
+                    const partId = parseInt(target.dataset.partId);
+                    const part = state.parts.find(p => p.id === partId);
+                    if (!part) return;
+                    oldValue = part.name;
+                    collection = state.parts.map(p => p.name);
+                    isDuplicate = state.parts.some(p => p.name === newValue && p.id !== partId);
+                }
 
+                if (newValue === oldValue) return;
+                if (!newValue) { alert("Name cannot be empty."); target.textContent = oldValue; return; }
+                if (isDuplicate) { alert(`Name "${newValue}" already exists.`); target.textContent = oldValue; return; }
+                
+                if (listType === 'paint') {
                     const paintIndex = state.paints.indexOf(oldValue);
                     if (paintIndex > -1) {
                         state.paints[paintIndex] = newValue;
@@ -316,20 +305,21 @@
                             part.sequence = part.sequence.map(color => color === oldValue ? newValue : color);
                         });
                     }
-                } else if (listType === 'part') {
-                    const partId = parseInt(target.dataset.partId);
-                    const part = state.parts.find(p => p.id === partId);
-                    if (!part) return;
-                    oldValue = part.name;
-                    if (newValue === oldValue) return;
-
-                    if (!newValue) { alert("Part name cannot be empty."); target.textContent = oldValue; return; }
-                    if (state.parts.some(p => p.name === newValue && p.id !== partId)) { alert(`Part name "${newValue}" already exists.`); target.textContent = oldValue; return; }
-                    
-                    part.name = newValue;
+                } else {
+                    const part = state.parts.find(p => p.id === parseInt(target.dataset.partId));
+                    if (part) part.name = newValue;
                 }
-                
                 invalidateSchedule(); markAsUnsaved(); renderAll();
+            };
+
+            if (e.type === 'keydown') {
+                if (e.key === 'Enter') { e.preventDefault(); target.blur(); }
+                if (e.key === 'Escape') {
+                    target.textContent = listType === 'paint' ? target.dataset.originalName : state.parts.find(p => p.id === parseInt(target.dataset.partId))?.name;
+                    target.blur();
+                }
+            } else if (e.type === 'blur') {
+                saveEdit();
             }
         }
         
@@ -358,22 +348,19 @@
         }
 
         function generateOptimalOrder() {
-            const partsWithNoSequence = state.parts.filter(p => p.sequence.length === 0);
-            if (partsWithNoSequence.length > 0) {
-                if (!confirm(`Warning: The following parts have no paint sequence and will be ignored: ${partsWithNoSequence.map(p=>p.name).join(', ')}. Continue?`)) return;
+            if (state.parts.filter(p => p.sequence.length === 0).length > 0) {
+                if (!confirm(`Warning: Some parts have no paint sequence and will be ignored. Continue?`)) return;
             }
-            outputDiv.innerHTML = ''; outputSection.classList.remove('invalidated');
-            scheduleData = [];
+            outputSection.classList.remove('invalidated');
+            scheduleData = { steps: [], completedStepIds: new Set() };
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
             if (partsToProcess.length === 0) {
-                outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>';
-                return;
+                outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; return;
             }
             
             const partColorToStepIndex = new Map();
             let stepIdCounter = 0;
-
             while (partsToProcess.some(p => p.currentStep < p.sequence.length)) {
                 const readyPartsByColor = new Map();
                 partsToProcess.filter(p=>p.currentStep < p.sequence.length).forEach(part => {
@@ -392,85 +379,114 @@
                 
                 const bestChoice = choices[0];
                 const stepId = stepIdCounter++;
-
-                scheduleData.push({
-                    id: stepId,
-                    color: bestChoice.color,
-                    partList: bestChoice.partList.map(p => p.name),
-                    completedParts: bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name),
-                    dependencies: new Set()
+                scheduleData.steps.push({
+                    id: stepId, color: bestChoice.color, partList: bestChoice.partList.map(p => p.name),
+                    completedParts: bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name), dependencies: new Set()
                 });
-                
-                bestChoice.partList.forEach(part => {
-                    partColorToStepIndex.set(`${part.id}_${part.sequence[part.currentStep]}`, stepId);
-                    part.currentStep++;
-                });
+                bestChoice.partList.forEach(part => { partColorToStepIndex.set(`${part.id}_${part.sequence[part.currentStep]}`, stepId); part.currentStep++; });
             }
-
             partsToProcess.forEach(part => {
                 for(let i = 1; i < part.originalSequence.length; i++) {
-                    const prevColor = part.originalSequence[i-1];
-                    const currentColor = part.originalSequence[i];
-                    const prevStepId = partColorToStepIndex.get(`${part.id}_${prevColor}`);
-                    const currentStepId = partColorToStepIndex.get(`${part.id}_${currentColor}`);
-                    if(prevStepId !== undefined && currentStepId !== undefined) {
-                        scheduleData[currentStepId].dependencies.add(prevStepId);
-                    }
+                    const prevStepId = partColorToStepIndex.get(`${part.id}_${part.originalSequence[i-1]}`);
+                    const currentStepId = partColorToStepIndex.get(`${part.id}_${part.originalSequence[i]}`);
+                    if(prevStepId !== undefined && currentStepId !== undefined) scheduleData.steps[currentStepId].dependencies.add(prevStepId);
                 }
             });
-            scheduleData.forEach(step => step.dependencies = Array.from(step.dependencies));
+            scheduleData.steps.forEach(step => step.dependencies = Array.from(step.dependencies));
+            updateDynamicScheduleView();
+        }
+        
+        function createStepElement(item, isStartable, isCompleted) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-wrapper';
+            if(isCompleted) wrapper.classList.add('is-completed');
+            
+            const container = document.createElement('div');
+            container.className = 'output-step-container';
 
-            scheduleData.forEach((step, index) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'output-step-wrapper';
-                wrapper.id = `step-wrapper-${index}`;
-                const container = document.createElement('div');
-                container.className = 'output-step-container';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'step-checkbox';
-                checkbox.dataset.stepId = index;
-                const stepDiv = document.createElement('div');
-                stepDiv.className = 'output-step';
-                stepDiv.innerHTML = `
-                    <span class="start-indicator" title="Ready to start!">⭐</span>
-                    <span class="output-icon">🎨</span>
-                    <span class="output-action">Load <code class="output-color-name">${sanitizeHTML(step.color)}</code></span>
-                    <span class="output-icon">➡️</span>
-                    <span>Paint: <strong>${step.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
-                container.appendChild(checkbox);
-                container.appendChild(stepDiv);
-                wrapper.appendChild(container);
-                if (step.completedParts.length > 0) {
-                    const notice = document.createElement('div');
-                    notice.className = 'completion-notice';
-                    notice.innerHTML = `✔️ Painting complete for: <strong>${step.completedParts.map(sanitizeHTML).sort().join(', ')}</strong>`;
-                    wrapper.appendChild(notice);
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'step-checkbox';
+            checkbox.checked = isCompleted;
+            
+            if (item.isMerged) {
+                checkbox.dataset.originalStepIds = item.originalStepIds.join(',');
+            } else {
+                checkbox.dataset.stepId = item.id;
+            }
+
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'output-step';
+            stepDiv.innerHTML = `
+                ${isStartable ? '<span class="start-indicator" title="Ready to start!">⭐</span>' : ''}
+                <span class="output-icon">🎨</span>
+                <span class="output-action">Load <code class="output-color-name">${sanitizeHTML(item.color)}</code></span>
+                <span class="output-icon">➡️</span>
+                <span>Paint: <strong>${item.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
+            
+            container.appendChild(checkbox);
+            container.appendChild(stepDiv);
+            wrapper.appendChild(container);
+
+            if (item.completedParts && item.completedParts.length > 0) {
+                const notice = document.createElement('div');
+                notice.className = 'completion-notice';
+                notice.innerHTML = `✔️ Painting complete for: <strong>${item.completedParts.map(sanitizeHTML).sort().join(', ')}</strong>`;
+                wrapper.appendChild(notice);
+            } else {
+                container.style.borderBottom = '1px dotted var(--border-color)';
+            }
+            return wrapper;
+        }
+        
+        function updateDynamicScheduleView() {
+            outputDiv.innerHTML = '';
+            const { completed, ready, waiting } = getTaskLists();
+            
+            const mergedReadySteps = new Map();
+            ready.forEach(step => {
+                if (!mergedReadySteps.has(step.color)) {
+                    mergedReadySteps.set(step.color, { color: step.color, partList: [], completedParts: [], originalStepIds: [], isMerged: true });
+                }
+                const group = mergedReadySteps.get(step.color);
+                group.partList.push(...step.partList);
+                group.completedParts.push(...step.completedParts);
+                group.originalStepIds.push(step.id);
+            });
+            
+            completed.forEach(step => outputDiv.appendChild(createStepElement(step, false, true)));
+            mergedReadySteps.forEach(mergedStep => outputDiv.appendChild(createStepElement(mergedStep, true, false)));
+            waiting.forEach(step => outputDiv.appendChild(createStepElement(step, false, false)));
+        }
+        
+        function getTaskLists() {
+            const completed = [], ready = [], waiting = [];
+            scheduleData.steps.forEach(step => {
+                if (scheduleData.completedStepIds.has(step.id)) {
+                    completed.push(step);
                 } else {
-                    container.style.borderBottom = '1px dotted var(--border-color)';
+                    const depsMet = step.dependencies.every(depId => scheduleData.completedStepIds.has(depId));
+                    if(depsMet) ready.push(step); else waiting.push(step);
                 }
-                outputDiv.appendChild(wrapper);
             });
-            updateStartableSteps();
+            return { completed, ready, waiting };
         }
-        
-        function updateStartableSteps() {
-            const completedStepIds = new Set(
-                Array.from(outputDiv.querySelectorAll('.step-checkbox:checked'))
-                     .map(cb => parseInt(cb.dataset.stepId))
-            );
 
-            scheduleData.forEach((step, index) => {
-                const wrapper = document.getElementById(`step-wrapper-${index}`);
-                if (!wrapper) return;
-                const isCompleted = completedStepIds.has(index);
-                wrapper.classList.toggle('is-completed', isCompleted);
-                const areDependenciesMet = step.dependencies.every(depId => completedStepIds.has(depId));
-                const isStartable = !isCompleted && areDependenciesMet;
-                wrapper.classList.toggle('is-startable', isStartable);
-            });
+        function handleCheckboxChange(e) {
+            const checkbox = e.target;
+            if (!checkbox.matches('.step-checkbox')) return;
+            
+            const originalStepIdsStr = checkbox.dataset.originalStepIds;
+            if(originalStepIdsStr){
+                originalStepIdsStr.split(',').forEach(idStr => scheduleData.completedStepIds.add(parseInt(idStr)));
+            } else {
+                const stepId = parseInt(checkbox.dataset.stepId);
+                if(checkbox.checked) scheduleData.completedStepIds.add(stepId);
+                else scheduleData.completedStepIds.delete(stepId);
+            }
+            updateDynamicScheduleView();
         }
-        
+
         function saveStateToHash() {
             const stateToSave = { title: titleInput.value.trim(), paints: state.paints, parts: state.parts };
             const jsonState = JSON.stringify(stateToSave);
@@ -481,7 +497,6 @@
                 saveFeedback.style.opacity = '1';
                 setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
             });
-            markAsSaved();
         }
 
         function loadStateFromHash() {
@@ -505,29 +520,24 @@
         function _performReset() {
             state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0;
-            scheduleData = [];
+            scheduleData = { steps: [], completedStepIds: new Set() };
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
             outputSection.classList.remove('invalidated');
             history.pushState("", document.title, window.location.pathname + window.location.search);
-            markAsSaved();
             exitStampMode();
         }
 
-        function handleReset() {
-            if (confirm('Reset everything? This will clear all data.')) {
-                _performReset();
-                renderAll();
-            }
-        }
+        function handleReset() { if (confirm('Reset everything? This will clear all data.')) { _performReset(); renderAll(); } }
         
         function loadInitialData() {
             _performReset();
             state.title = 'Example Gundam Model';
             state.paints.push('primer', 'internal-frame-grey', 'white', 'blue', 'red', 'yellow', 'clearcoat');
             state.parts.push(
-                { id: nextPartId++, name: 'A-13 (Chest Armor)', sequence: ['primer', 'blue', 'white', 'clearcoat'] },
+                { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['primer', 'blue', 'white', 'clearcoat'] },
+                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['primer', 'blue', 'clearcoat']},
                 { id: nextPartId++, name: 'C-2 (Leg Frame)', sequence: ['internal-frame-grey'] },
-                { id: nextPartId++, name: 'F-9 (Head V-Fin)', sequence: ['primer', 'yellow', 'clearcoat'] }
+                { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['primer', 'yellow', 'clearcoat'] }
             );
             renderAll();
             markAsUnsaved();
@@ -539,13 +549,11 @@
         paintList.addEventListener('click', handlePaintListClick);
         paintList.addEventListener('blur', (e) => handleNameEdit(e, 'paint'), true);
         paintList.addEventListener('keydown', (e) => handleNameEdit(e, 'paint'));
-
         addPartBtn.addEventListener('click', handleAddPart);
         partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart());
         partList.addEventListener('click', handlePartListClick);
         partList.addEventListener('blur', (e) => handleNameEdit(e, 'part'), true);
         partList.addEventListener('keydown', (e) => handleNameEdit(e, 'part'));
-        
         partSequenceContainer.addEventListener('click', handleSequenceInteraction);
         titleInput.addEventListener('input', handleTitleChange);
         saveBtn.addEventListener('click', saveStateToHash);
@@ -554,9 +562,7 @@
         stampToolBtn.addEventListener('click', enterStampMode);
         exitStampBtn.addEventListener('click', exitStampMode);
         stampColorSelect.addEventListener('change', handleStampColorChange);
-        outputDiv.addEventListener('change', (e) => {
-            if (e.target.matches('.step-checkbox')) updateStartableSteps();
-        });
+        outputDiv.addEventListener('change', handleCheckboxChange);
         
         // INITIALIZATION
         if (!loadStateFromHash()) {
