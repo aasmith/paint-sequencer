@@ -420,6 +420,9 @@
             
             if (item.isMerged) checkbox.dataset.originalStepIds = item.originalStepIds.join(',');
             else checkbox.dataset.stepId = item.id;
+            
+            const partCount = item.partList.length;
+            const partLabel = partCount === 1 ? 'part' : 'parts';
 
             const stepDiv = document.createElement('div');
             stepDiv.className = 'output-step';
@@ -428,7 +431,7 @@
                 <span class="output-icon">🎨</span>
                 <span class="output-action">Load <code class="output-color-name">${sanitizeHTML(item.color)}</code></span>
                 <span class="output-icon">➡️</span>
-                <span>Paint: <strong>${item.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
+                <span>Paint (${partCount} ${partLabel}): <strong>${item.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
             
             container.appendChild(checkbox); container.appendChild(stepDiv);
             wrapper.appendChild(container);
