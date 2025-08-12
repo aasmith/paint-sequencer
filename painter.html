@@ -23,10 +23,12 @@
         body { font-family: var(--font-family); line-height: 1.6; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 24px; }
         .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
         .card { background-color: var(--surface-color); box-shadow: var(--shadow); border-radius: 8px; padding: 20px; position: relative; }
-        .card-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
+        .card-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .card-header h2 { border: none; padding: 0; margin: 0; }
         .card-header .legend { color: var(--text-secondary-color); font-size: 0.9em; white-space: nowrap; }
-        #progress-percentage { font-weight: 600; color: var(--primary-color); margin-left: auto; padding-right: 20px; }
+        .header-controls { display: contents; } /* Allows items to flow with flexbox */
+        #progress-percentage { font-weight: 600; color: var(--primary-color); margin-left: auto; padding: 0 10px;}
+        #target-part-select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.9em; }
         h1 { font-size: 1.8rem; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;}
         .title-input { font-size: 1.2rem; font-weight: 600; border: none; border-bottom: 2px solid transparent; width: 100%; padding: 4px; margin-bottom: 20px; transition: border-color 0.2s; }
         .title-input:focus { outline: none; border-bottom-color: var(--primary-color); }
@@ -67,6 +69,8 @@
         .output-wrapper:last-child .completion-notice, .output-wrapper:last-child .output-step { border-bottom: none; }
         .output-icon { font-size: 1.5rem; line-height: 1; }
         .start-indicator { cursor: help; font-size: 1.5rem; line-height: 1; }
+        .output-wrapper { transition: background-color 0.3s, border 0.3s; }
+        .output-wrapper.is-target-path { border-left: 4px solid var(--stamp-color); background-color: #fffbeb; }
         .output-wrapper.is-completed { opacity: 0.5; text-decoration: line-through; }
         .output-wrapper.is-waiting { opacity: 0.6; }
         .output-wrapper.is-waiting .output-step-container { cursor: not-allowed; }
@@ -146,9 +150,12 @@
 
         <div class="card" id="output-section">
             <div class="card-header">
-                <h2>✔️ Optimized Schedule</h2>
-                <span id="progress-percentage"></span>
-                <small class="legend">⭐ = Ready to start!</small>
+                <div class="header-controls">
+                    <h2>✔️ Optimized Schedule</h2>
+                    <span id="progress-percentage"></span>
+                    <select id="target-part-select" title="Select a part to highlight its critical path"></select>
+                    <small class="legend">⭐ = Ready to start!</small>
+                </div>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
         </div>
@@ -158,10 +165,9 @@
     document.addEventListener('DOMContentLoaded', () => {
         let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
-        let scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map() };
+        let scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
 
         const stampToolBtn = document.getElementById('stamp-tool-btn');
-        const stampToolToolbar = document.getElementById('stamp-tool-toolbar');
         const stampColorSelect = document.getElementById('stamp-color-select');
         const exitStampBtn = document.getElementById('exit-stamp-btn');
         const titleInput = document.getElementById('title-input');
@@ -178,6 +184,7 @@
         const outputSection = document.getElementById('output-section');
         const outputDiv = document.getElementById('output');
         const progressPercentageEl = document.getElementById('progress-percentage');
+        const targetPartSelect = document.getElementById('target-part-select');
         
         const sanitizeHTML = str => str.replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
 
@@ -235,12 +242,13 @@
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
             state.stampMode.isActive = true;
             stampToolBtn.style.display = 'none';
+            document.getElementById('stamp-tool-toolbar').style.display = 'flex';
             stampColorSelect.innerHTML = state.paints.map(p => `<option value="${sanitizeHTML(p)}">${sanitizeHTML(p)}</option>`).join('');
             state.stampMode.color = stampColorSelect.value;
             renderAll();
         }
 
-        function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; renderAll(); }
+        function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; document.getElementById('stamp-tool-toolbar').style.display = 'none'; renderAll(); }
         function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
         function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
         
@@ -353,8 +361,7 @@
             if (state.parts.filter(p => p.sequence.length === 0).length > 0) {
                 if (!confirm(`Warning: Some parts have no paint sequence and will be ignored. Continue?`)) return;
             }
-            outputSection.classList.remove('invalidated');
-            scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map() };
+            _resetSchedule();
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
             if (partsToProcess.length === 0) {
@@ -401,14 +408,50 @@
                     scheduleData.partNameToStepIds.get(partName).push(step.id);
                 });
             });
+            renderTargetPartSelector();
             updateDynamicScheduleView();
         }
         
-        function createStepElement(item, isStartable, isCompleted, isWaiting) {
+        function renderTargetPartSelector() {
+            targetPartSelect.innerHTML = '<option value="">Default (No Target)</option>';
+            const sortedPartNames = Array.from(scheduleData.partNameToStepIds.keys()).sort();
+            sortedPartNames.forEach(name => {
+                targetPartSelect.innerHTML += `<option value="${sanitizeHTML(name)}">${sanitizeHTML(name)}</option>`;
+            });
+            targetPartSelect.value = scheduleData.currentTargetPartName || "";
+        }
+        
+        function updateTargetPath() {
+            const { currentTargetPartName, partNameToStepIds, steps } = scheduleData;
+            scheduleData.targetPathStepIds.clear();
+            if (!currentTargetPartName) return;
+
+            const initialStepIds = partNameToStepIds.get(currentTargetPartName);
+            if (!initialStepIds) return;
+            
+            const stepMap = new Map(steps.map(s => [s.id, s]));
+            const toProcess = [...initialStepIds];
+            const processed = new Set();
+
+            while(toProcess.length > 0) {
+                const currentId = toProcess.pop();
+                if (processed.has(currentId)) continue;
+
+                processed.add(currentId);
+                scheduleData.targetPathStepIds.add(currentId);
+                const step = stepMap.get(currentId);
+                if (step) {
+                    step.dependencies.forEach(depId => toProcess.push(depId));
+                }
+            }
+        }
+        
+        function createStepElement(item, isStartable, isCompleted, isWaiting, isTargetPath) {
             const wrapper = document.createElement('div');
             wrapper.className = 'output-wrapper';
             if(isCompleted) wrapper.classList.add('is-completed');
             if(isWaiting) wrapper.classList.add('is-waiting');
+            if(isTargetPath) wrapper.classList.add('is-target-path');
             
             const container = document.createElement('div');
             container.className = 'output-step-container';
@@ -451,6 +494,7 @@
             outputDiv.innerHTML = '';
             calculateProgress();
             const { completed, ready, waiting } = getTaskLists();
+            const { targetPathStepIds } = scheduleData;
             
             const mergedReadySteps = new Map();
             ready.forEach(step => {
@@ -463,9 +507,12 @@
                 group.originalStepIds.push(step.id);
             });
             
-            completed.forEach(step => outputDiv.appendChild(createStepElement(step, false, true, false)));
-            mergedReadySteps.forEach(mergedStep => outputDiv.appendChild(createStepElement(mergedStep, true, false, false)));
-            waiting.forEach(step => outputDiv.appendChild(createStepElement(step, false, false, true)));
+            completed.forEach(step => outputDiv.appendChild(createStepElement(step, false, true, false, targetPathStepIds.has(step.id))));
+            mergedReadySteps.forEach(mergedStep => {
+                const isPath = mergedStep.originalStepIds.some(id => targetPathStepIds.has(id));
+                outputDiv.appendChild(createStepElement(mergedStep, true, false, false, isPath));
+            });
+            waiting.forEach(step => outputDiv.appendChild(createStepElement(step, false, false, true, targetPathStepIds.has(step.id))));
         }
         
         function getTaskLists() {
@@ -488,9 +535,7 @@
             }
             let completedPartsCount = 0;
             partNameToStepIds.forEach((stepIds, partName) => {
-                if (stepIds.every(id => completedStepIds.has(id))) {
-                    completedPartsCount++;
-                }
+                if (stepIds.every(id => completedStepIds.has(id))) completedPartsCount++;
             });
             const percentage = Math.round((completedPartsCount / partNameToStepIds.size) * 100);
             progressPercentageEl.textContent = `Progress: ${percentage}%`;
@@ -550,13 +595,18 @@
             return false;
         }
 
+        function _resetSchedule() {
+            scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
+            outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
+            progressPercentageEl.textContent = '';
+            targetPartSelect.innerHTML = '';
+            outputSection.classList.remove('invalidated');
+        }
+
         function _performReset() {
             state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0;
-            scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map() };
-            outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
-            progressPercentageEl.textContent = '';
-            outputSection.classList.remove('invalidated');
+            _resetSchedule();
             history.pushState("", document.title, window.location.pathname + window.location.search);
             exitStampMode();
         }
@@ -565,13 +615,14 @@
         
         function loadInitialData() {
             _performReset();
-            state.title = 'Example Gundam Model';
-            state.paints.push('primer', 'internal-frame-grey', 'white', 'blue', 'red', 'yellow', 'clearcoat');
+            state.title = 'HG Gundam "Paint-by-Numbers"';
+            state.paints.push('Primer', 'Frame Gray', 'Armor White', 'Gundam Blue', 'Fin Red', 'V-Fin Yellow', 'Gloss Clearcoat');
             state.parts.push(
-                { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['primer', 'blue', 'white', 'clearcoat'] },
-                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['primer', 'blue', 'clearcoat']},
-                { id: nextPartId++, name: 'C-2 (Leg Frame)', sequence: ['internal-frame-grey'] },
-                { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['primer', 'yellow', 'clearcoat'] }
+                { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['Primer', 'Gundam Blue', 'Armor White', 'Gloss Clearcoat'] },
+                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Gundam Blue', 'Gloss Clearcoat']},
+                { id: nextPartId++, name: 'C-2, C-5 (Leg Frame)', sequence: ['Frame Gray'] },
+                { id: nextPartId++, name: 'D-1 (Shield)', sequence: ['Primer', 'Fin Red', 'Armor White', 'Gloss Clearcoat'] },
+                { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['Primer', 'V-Fin Yellow', 'Gloss Clearcoat'] }
             );
             renderAll();
             markAsUnsaved();
@@ -597,6 +648,11 @@
         exitStampBtn.addEventListener('click', exitStampMode);
         stampColorSelect.addEventListener('change', handleStampColorChange);
         outputDiv.addEventListener('change', handleCheckboxChange);
+        targetPartSelect.addEventListener('change', () => {
+            scheduleData.currentTargetPartName = targetPartSelect.value || null;
+            updateTargetPath();
+            updateDynamicScheduleView();
+        });
         
         // INITIALIZATION
         if (!loadStateFromHash()) loadInitialData();
