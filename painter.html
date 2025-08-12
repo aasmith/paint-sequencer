@@ -43,6 +43,8 @@
         .btn-stamp:hover { background-color: #e0ac00; }
         .item-list { list-style-type: none; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
         .item-list li { display: flex; align-items: center; background-color: var(--bg-color); border-radius: 15px; padding: 5px 5px 5px 12px; font-size: 0.9rem; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .editable-name { cursor: text; padding: 2px 4px; border-radius: 3px; }
+        .editable-name[contenteditable]:focus { outline: 2px solid var(--primary-color); background-color: #eaf3ff; }
         .remove-btn { background: #ccc; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; margin-left: 8px; font-weight: bold; transition: background-color 0.2s; }
         .remove-btn:hover { background-color: #a0a0a0; }
         .part-sequence-row { display: flex; align-items: center; gap: 15px; padding: 12px 0; border-bottom: 1px solid var(--border-color); transition: background-color 0.2s; }
@@ -174,11 +176,18 @@
         const resetBtn = document.getElementById('reset-btn');
         const outputSection = document.getElementById('output-section');
         const outputDiv = document.getElementById('output');
+        
+        const sanitizeHTML = str => str.replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
 
         const renderAll = () => { renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
         const renderTitle = () => { titleInput.value = state.title; };
-        const renderPaintList = () => { paintList.innerHTML = state.paints.map(p => `<li><span>${p}</span><span class="remove-btn" data-paint-name="${p}" title="Remove Paint">×</span></li>`).join(''); };
-        const renderPartList = () => { partList.innerHTML = state.parts.map(p => `<li><span>${p.name}</span><span class="remove-btn" data-part-id="${p.id}" title="Remove Part">×</span></li>`).join(''); };
+        
+        const renderPaintList = () => {
+            paintList.innerHTML = state.paints.map(p => `<li><span class="editable-name" contenteditable="true" data-original-name="${sanitizeHTML(p)}">${sanitizeHTML(p)}</span><span class="remove-btn" data-paint-name="${sanitizeHTML(p)}" title="Remove Paint">×</span></li>`).join('');
+        };
+        const renderPartList = () => {
+            partList.innerHTML = state.parts.map(p => `<li><span class="editable-name" contenteditable="true" data-part-id="${p.id}">${sanitizeHTML(p.name)}</span><span class="remove-btn" data-part-id="${p.id}" title="Remove Part">×</span></li>`).join('');
+        };
         
         function renderSequenceBuilder() {
             partSequenceContainer.innerHTML = '';
@@ -196,21 +205,21 @@
                 if (isStamping) {
                     sequenceItems.push(`<div class="drop-target large" data-insert-index="0"></div>`);
                     part.sequence.forEach((color, index) => {
-                        sequenceItems.push(`<div class="paint-step"><span>${color}</span></div>`);
+                        sequenceItems.push(`<div class="paint-step"><span>${sanitizeHTML(color)}</span></div>`);
                         sequenceItems.push(`<div class="drop-target small" data-insert-index="${index + 1}"></div>`);
                     });
                 } else {
                     sequenceItems = part.sequence.map((color, index) => `
                         <div class="paint-step">
                             <button class="reorder-btn" data-dir="left" data-index="${index}" title="Move Left">←</button>
-                            <span>${color}</span>
+                            <span>${sanitizeHTML(color)}</span>
                             <button class="reorder-btn" data-dir="right" data-index="${index}" title="Move Right">→</button>
                             <span class="remove-step-btn" data-index="${index}" title="Remove step">×</span>
                         </div>`);
                 }
-                let selectOptions = state.paints.map(p => `<option value="${p}">${p}</option>`).join('') || '<option disabled>Add paints first</option>';
+                let selectOptions = state.paints.map(p => `<option value="${sanitizeHTML(p)}">${sanitizeHTML(p)}</option>`).join('') || '<option disabled>Add paints first</option>';
                 row.innerHTML = `
-                    <div class="part-name-label">${part.name}</div>
+                    <div class="part-name-label">${sanitizeHTML(part.name)}</div>
                     <div class="sequence-steps">${sequenceItems.join('')}</div>
                     <div class="add-paint-control"><select ${state.paints.length===0?'disabled':''}>${selectOptions}</select><button class="btn-add add-step-btn" ${state.paints.length===0?'disabled':''}>Add</button></div>`;
                 partSequenceContainer.appendChild(row);
@@ -225,7 +234,7 @@
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
             state.stampMode.isActive = true;
             stampToolBtn.style.display = 'none';
-            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${p}">${p}</option>`).join('');
+            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${sanitizeHTML(p)}">${sanitizeHTML(p)}</option>`).join('');
             state.stampMode.color = stampColorSelect.value;
             renderAll();
         }
@@ -236,16 +245,16 @@
             renderAll();
         }
 
-        function handleStampColorChange() {
-            state.stampMode.color = stampColorSelect.value;
-        }
-
+        function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
         function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
         
         function handleAddItems(inputEl, collection, createItem) {
             const values = inputEl.value.split(',').map(v => v.trim()).filter(Boolean);
             if (values.length === 0) return;
-            values.forEach(value => { if (!collection.find(item => (item.name || item) === value)) collection.push(createItem(value)); });
+            values.forEach(value => { 
+                const exists = collection.some(item => (item.name || item) === value);
+                if (!exists) collection.push(createItem(value));
+            });
             inputEl.value = ''; invalidateSchedule(); markAsUnsaved(); renderAll();
         }
 
@@ -270,6 +279,56 @@
             const part = state.parts.find(p => p.id === partId);
             if (part && confirm(`Remove part "${part.name}"?`)) {
                 state.parts = state.parts.filter(p => p.id !== partId);
+                invalidateSchedule(); markAsUnsaved(); renderAll();
+            }
+        }
+
+        function handleNameEdit(e, listType) {
+            const target = e.target;
+            if (e.type === 'keydown') {
+                if (e.key === 'Enter') { e.preventDefault(); target.blur(); }
+                if (e.key === 'Escape') { 
+                    if (listType === 'paint') target.textContent = target.dataset.originalName;
+                    else if (listType === 'part') {
+                        const part = state.parts.find(p => p.id === parseInt(target.dataset.partId));
+                        if(part) target.textContent = part.name;
+                    }
+                    target.blur(); 
+                 }
+                return;
+            }
+
+            if (e.type === 'blur') {
+                const newValue = target.textContent.trim();
+                let oldValue;
+                
+                if (listType === 'paint') {
+                    oldValue = target.dataset.originalName;
+                    if (newValue === oldValue) return;
+                    
+                    if (!newValue) { alert("Paint name cannot be empty."); target.textContent = oldValue; return; }
+                    if (state.paints.includes(newValue)) { alert(`Paint name "${newValue}" already exists.`); target.textContent = oldValue; return; }
+
+                    const paintIndex = state.paints.indexOf(oldValue);
+                    if (paintIndex > -1) {
+                        state.paints[paintIndex] = newValue;
+                        state.parts.forEach(part => {
+                            part.sequence = part.sequence.map(color => color === oldValue ? newValue : color);
+                        });
+                    }
+                } else if (listType === 'part') {
+                    const partId = parseInt(target.dataset.partId);
+                    const part = state.parts.find(p => p.id === partId);
+                    if (!part) return;
+                    oldValue = part.name;
+                    if (newValue === oldValue) return;
+
+                    if (!newValue) { alert("Part name cannot be empty."); target.textContent = oldValue; return; }
+                    if (state.parts.some(p => p.name === newValue && p.id !== partId)) { alert(`Part name "${newValue}" already exists.`); target.textContent = oldValue; return; }
+                    
+                    part.name = newValue;
+                }
+                
                 invalidateSchedule(); markAsUnsaved(); renderAll();
             }
         }
@@ -365,32 +424,27 @@
                 const wrapper = document.createElement('div');
                 wrapper.className = 'output-step-wrapper';
                 wrapper.id = `step-wrapper-${index}`;
-
                 const container = document.createElement('div');
                 container.className = 'output-step-container';
-
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'step-checkbox';
                 checkbox.dataset.stepId = index;
-                
                 const stepDiv = document.createElement('div');
                 stepDiv.className = 'output-step';
                 stepDiv.innerHTML = `
                     <span class="start-indicator" title="Ready to start!">⭐</span>
                     <span class="output-icon">🎨</span>
-                    <span class="output-action">Load <code class="output-color-name">${step.color}</code></span>
+                    <span class="output-action">Load <code class="output-color-name">${sanitizeHTML(step.color)}</code></span>
                     <span class="output-icon">➡️</span>
-                    <span>Paint: <strong>${step.partList.sort().join(', ')}</strong></span>`;
-                
+                    <span>Paint: <strong>${step.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
                 container.appendChild(checkbox);
                 container.appendChild(stepDiv);
                 wrapper.appendChild(container);
-
                 if (step.completedParts.length > 0) {
                     const notice = document.createElement('div');
                     notice.className = 'completion-notice';
-                    notice.innerHTML = `✔️ Painting complete for: <strong>${step.completedParts.sort().join(', ')}</strong>`;
+                    notice.innerHTML = `✔️ Painting complete for: <strong>${step.completedParts.map(sanitizeHTML).sort().join(', ')}</strong>`;
                     wrapper.appendChild(notice);
                 } else {
                     container.style.borderBottom = '1px dotted var(--border-color)';
@@ -409,10 +463,8 @@
             scheduleData.forEach((step, index) => {
                 const wrapper = document.getElementById(`step-wrapper-${index}`);
                 if (!wrapper) return;
-
                 const isCompleted = completedStepIds.has(index);
                 wrapper.classList.toggle('is-completed', isCompleted);
-
                 const areDependenciesMet = step.dependencies.every(depId => completedStepIds.has(depId));
                 const isStartable = !isCompleted && areDependenciesMet;
                 wrapper.classList.toggle('is-startable', isStartable);
@@ -473,20 +525,27 @@
             state.title = 'Example Gundam Model';
             state.paints.push('primer', 'internal-frame-grey', 'white', 'blue', 'red', 'yellow', 'clearcoat');
             state.parts.push(
-                { id: nextPartId++, name: 'Chest Armor', sequence: ['primer', 'blue', 'white', 'clearcoat'] },
-                { id: nextPartId++, name: 'Leg Frame', sequence: ['internal-frame-grey'] },
-                { id: nextPartId++, name: 'Head V-Fin', sequence: ['primer', 'yellow', 'clearcoat'] }
+                { id: nextPartId++, name: 'A-13 (Chest Armor)', sequence: ['primer', 'blue', 'white', 'clearcoat'] },
+                { id: nextPartId++, name: 'C-2 (Leg Frame)', sequence: ['internal-frame-grey'] },
+                { id: nextPartId++, name: 'F-9 (Head V-Fin)', sequence: ['primer', 'yellow', 'clearcoat'] }
             );
             renderAll();
             markAsUnsaved();
         }
 
+        // EVENT LISTENERS
         addPaintBtn.addEventListener('click', handleAddPaint);
         paintInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPaint());
         paintList.addEventListener('click', handlePaintListClick);
+        paintList.addEventListener('blur', (e) => handleNameEdit(e, 'paint'), true);
+        paintList.addEventListener('keydown', (e) => handleNameEdit(e, 'paint'));
+
         addPartBtn.addEventListener('click', handleAddPart);
         partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart());
         partList.addEventListener('click', handlePartListClick);
+        partList.addEventListener('blur', (e) => handleNameEdit(e, 'part'), true);
+        partList.addEventListener('keydown', (e) => handleNameEdit(e, 'part'));
+        
         partSequenceContainer.addEventListener('click', handleSequenceInteraction);
         titleInput.addEventListener('input', handleTitleChange);
         saveBtn.addEventListener('click', saveStateToHash);
@@ -499,6 +558,7 @@
             if (e.target.matches('.step-checkbox')) updateStartableSteps();
         });
         
+        // INITIALIZATION
         if (!loadStateFromHash()) {
             loadInitialData();
         } else {
