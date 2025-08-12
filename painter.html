@@ -153,7 +153,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
-        let scheduleData = []; // Holds the generated schedule with dependencies
+        let scheduleData = [];
 
         const sequenceCard = document.getElementById('sequence-card');
         const stampToolBtn = document.getElementById('stamp-tool-btn');
@@ -186,7 +186,7 @@
                 partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>';
                 return;
             }
-            const isStamping = state.stampMode.isActive && state.stampMode.color;
+            const isStamping = state.stampMode.isActive;
             sequenceCard.classList.toggle('stamp-mode-active', isStamping);
             state.parts.forEach(part => {
                 const row = document.createElement('div');
@@ -223,15 +223,21 @@
 
         function enterStampMode() {
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
-            state.stampMode.isActive = true; stampToolBtn.style.display = 'none';
+            state.stampMode.isActive = true;
+            stampToolBtn.style.display = 'none';
             stampColorSelect.innerHTML = state.paints.map(p => `<option value="${p}">${p}</option>`).join('');
             state.stampMode.color = stampColorSelect.value;
             renderAll();
         }
 
         function exitStampMode() {
-            state.stampMode.isActive = false; stampToolBtn.style.display = 'block';
+            state.stampMode.isActive = false;
+            stampToolBtn.style.display = 'block';
             renderAll();
+        }
+
+        function handleStampColorChange() {
+            state.stampMode.color = stampColorSelect.value;
         }
 
         function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
@@ -275,7 +281,7 @@
             if (!part) return;
             if (state.stampMode.isActive && e.target.matches('.drop-target')) {
                 const insertIndex = parseInt(e.target.dataset.insertIndex);
-                part.sequence.splice(insertIndex, 0, state.stampMode.color || state.paints[0]);
+                part.sequence.splice(insertIndex, 0, state.stampMode.color);
                 markAsUnsaved(); invalidateSchedule(); renderAll(); return;
             }
             let stateChanged = false;
@@ -298,7 +304,7 @@
                 if (!confirm(`Warning: The following parts have no paint sequence and will be ignored: ${partsWithNoSequence.map(p=>p.name).join(', ')}. Continue?`)) return;
             }
             outputDiv.innerHTML = ''; outputSection.classList.remove('invalidated');
-            scheduleData = []; // Clear previous schedule data
+            scheduleData = [];
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
             if (partsToProcess.length === 0) {
@@ -342,7 +348,6 @@
                 });
             }
 
-            // Build dependency graph
             partsToProcess.forEach(part => {
                 for(let i = 1; i < part.originalSequence.length; i++) {
                     const prevColor = part.originalSequence[i-1];
@@ -354,9 +359,8 @@
                     }
                 }
             });
-            scheduleData.forEach(step => step.dependencies = Array.from(step.dependencies)); // Convert Set to Array
+            scheduleData.forEach(step => step.dependencies = Array.from(step.dependencies));
 
-            // Render schedule
             scheduleData.forEach((step, index) => {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'output-step-wrapper';
@@ -416,11 +420,7 @@
         }
         
         function saveStateToHash() {
-            const stateToSave = {
-                title: titleInput.value.trim(),
-                paints: state.paints,
-                parts: state.parts
-            };
+            const stateToSave = { title: titleInput.value.trim(), paints: state.paints, parts: state.parts };
             const jsonState = JSON.stringify(stateToSave);
             const base64State = btoa(unescape(encodeURIComponent(jsonState)));
             window.location.hash = base64State;
@@ -494,6 +494,7 @@
         resetBtn.addEventListener('click', handleReset);
         stampToolBtn.addEventListener('click', enterStampMode);
         exitStampBtn.addEventListener('click', exitStampMode);
+        stampColorSelect.addEventListener('change', handleStampColorChange);
         outputDiv.addEventListener('change', (e) => {
             if (e.target.matches('.step-checkbox')) updateStartableSteps();
         });
