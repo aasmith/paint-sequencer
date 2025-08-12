@@ -26,6 +26,7 @@
         .card-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
         .card-header h2 { border: none; padding: 0; margin: 0; }
         .card-header .legend { color: var(--text-secondary-color); font-size: 0.9em; white-space: nowrap; }
+        #progress-percentage { font-weight: 600; color: var(--primary-color); margin-left: auto; padding-right: 20px; }
         h1 { font-size: 1.8rem; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;}
         .title-input { font-size: 1.2rem; font-weight: 600; border: none; border-bottom: 2px solid transparent; width: 100%; padding: 4px; margin-bottom: 20px; transition: border-color 0.2s; }
         .title-input:focus { outline: none; border-bottom-color: var(--primary-color); }
@@ -59,14 +60,16 @@
         .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
         .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
-        .output-step-container { display: flex; align-items: center; transition: background-color 0.3s; }
-        .output-step-container .step-checkbox { margin-right: 15px; transform: scale(1.5); }
+        .output-step-container { display: flex; align-items: center; transition: opacity 0.3s; }
+        .output-step-container .step-checkbox { margin-right: 15px; transform: scale(1.5); cursor: pointer; }
         .output-step { display: flex; align-items: center; gap: 10px; padding: 10px 10px 5px 10px; flex-grow: 1; }
         .completion-notice { color: var(--text-secondary-color); font-size: 0.9em; padding: 0px 10px 10px 48px; border-bottom: 1px dotted var(--border-color); }
-        .output-step-wrapper:last-child .completion-notice, .output-step-wrapper:last-child .output-step { border-bottom: none; }
+        .output-wrapper:last-child .completion-notice, .output-wrapper:last-child .output-step { border-bottom: none; }
         .output-icon { font-size: 1.5rem; line-height: 1; }
         .start-indicator { cursor: help; font-size: 1.5rem; line-height: 1; }
         .output-wrapper.is-completed { opacity: 0.5; text-decoration: line-through; }
+        .output-wrapper.is-waiting { opacity: 0.6; }
+        .output-wrapper.is-waiting .output-step-container { cursor: not-allowed; }
         .output-action { font-weight: 600; min-width: 220px;}
         .output-color-name { background: #eee; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
         #output-section.invalidated #output { opacity: 0.4; }
@@ -144,6 +147,7 @@
         <div class="card" id="output-section">
             <div class="card-header">
                 <h2>✔️ Optimized Schedule</h2>
+                <span id="progress-percentage"></span>
                 <small class="legend">⭐ = Ready to start!</small>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
@@ -154,16 +158,14 @@
     document.addEventListener('DOMContentLoaded', () => {
         let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
-        let scheduleData = { steps: [], completedStepIds: new Set() };
+        let scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map() };
 
-        const sequenceCard = document.getElementById('sequence-card');
         const stampToolBtn = document.getElementById('stamp-tool-btn');
         const stampToolToolbar = document.getElementById('stamp-tool-toolbar');
         const stampColorSelect = document.getElementById('stamp-color-select');
         const exitStampBtn = document.getElementById('exit-stamp-btn');
         const titleInput = document.getElementById('title-input');
         const saveBtn = document.getElementById('save-btn');
-        const saveFeedback = document.getElementById('save-feedback');
         const paintInput = document.getElementById('paint-input');
         const addPaintBtn = document.getElementById('add-paint-btn');
         const paintList = document.getElementById('paint-list');
@@ -175,6 +177,7 @@
         const resetBtn = document.getElementById('reset-btn');
         const outputSection = document.getElementById('output-section');
         const outputDiv = document.getElementById('output');
+        const progressPercentageEl = document.getElementById('progress-percentage');
         
         const sanitizeHTML = str => str.replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
 
@@ -182,13 +185,14 @@
         const renderTitle = () => { titleInput.value = state.title; };
         
         const renderPaintList = () => {
-            paintList.innerHTML = state.paints.map(p => `<li><span class="editable-name" contenteditable="true" data-original-name="${sanitizeHTML(p)}">${sanitizeHTML(p)}</span><span class="remove-btn" data-paint-name="${sanitizeHTML(p)}" title="Remove Paint">×</span></li>`).join('');
+             paintList.innerHTML = state.paints.map(p => `<li><span class="editable-name" contenteditable="true" data-original-name="${sanitizeHTML(p)}">${sanitizeHTML(p)}</span><span class="remove-btn" data-paint-name="${sanitizeHTML(p)}" title="Remove Paint">×</span></li>`).join('');
         };
         const renderPartList = () => {
             partList.innerHTML = state.parts.map(p => `<li><span class="editable-name" contenteditable="true" data-part-id="${p.id}">${sanitizeHTML(p.name)}</span><span class="remove-btn" data-part-id="${p.id}" title="Remove Part">×</span></li>`).join('');
         };
         
         function renderSequenceBuilder() {
+            const sequenceCard = document.getElementById('sequence-card');
             partSequenceContainer.innerHTML = '';
             if (state.parts.length === 0) {
                 partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>'; return;
@@ -224,7 +228,7 @@
             });
         }
         
-        function markAsUnsaved() { saveBtn.classList.add('unsaved'); }
+        function markAsUnsaved() { document.getElementById('save-btn').classList.add('unsaved'); }
         function invalidateSchedule() { if (scheduleData.steps.length > 0) outputSection.classList.add('invalidated'); }
 
         function enterStampMode() {
@@ -278,24 +282,22 @@
             const target = e.target;
             const saveEdit = () => {
                 const newValue = target.textContent.trim();
-                let oldValue, collection, isDuplicate;
+                let oldValue, isDuplicate;
                 
                 if (listType === 'paint') {
                     oldValue = target.dataset.originalName;
-                    collection = state.paints;
-                    isDuplicate = collection.includes(newValue);
+                    isDuplicate = state.paints.includes(newValue);
                 } else {
                     const partId = parseInt(target.dataset.partId);
                     const part = state.parts.find(p => p.id === partId);
                     if (!part) return;
                     oldValue = part.name;
-                    collection = state.parts.map(p => p.name);
                     isDuplicate = state.parts.some(p => p.name === newValue && p.id !== partId);
                 }
 
                 if (newValue === oldValue) return;
                 if (!newValue) { alert("Name cannot be empty."); target.textContent = oldValue; return; }
-                if (isDuplicate) { alert(`Name "${newValue}" already exists.`); target.textContent = oldValue; return; }
+                if (isDuplicate && newValue !== oldValue) { alert(`Name "${newValue}" already exists.`); target.textContent = oldValue; return; }
                 
                 if (listType === 'paint') {
                     const paintIndex = state.paints.indexOf(oldValue);
@@ -352,7 +354,7 @@
                 if (!confirm(`Warning: Some parts have no paint sequence and will be ignored. Continue?`)) return;
             }
             outputSection.classList.remove('invalidated');
-            scheduleData = { steps: [], completedStepIds: new Set() };
+            scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map() };
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
             if (partsToProcess.length === 0) {
@@ -392,14 +394,21 @@
                     if(prevStepId !== undefined && currentStepId !== undefined) scheduleData.steps[currentStepId].dependencies.add(prevStepId);
                 }
             });
-            scheduleData.steps.forEach(step => step.dependencies = Array.from(step.dependencies));
+            scheduleData.steps.forEach(step => {
+                step.dependencies = Array.from(step.dependencies);
+                step.partList.forEach(partName => {
+                    if (!scheduleData.partNameToStepIds.has(partName)) scheduleData.partNameToStepIds.set(partName, []);
+                    scheduleData.partNameToStepIds.get(partName).push(step.id);
+                });
+            });
             updateDynamicScheduleView();
         }
         
-        function createStepElement(item, isStartable, isCompleted) {
+        function createStepElement(item, isStartable, isCompleted, isWaiting) {
             const wrapper = document.createElement('div');
             wrapper.className = 'output-wrapper';
             if(isCompleted) wrapper.classList.add('is-completed');
+            if(isWaiting) wrapper.classList.add('is-waiting');
             
             const container = document.createElement('div');
             container.className = 'output-step-container';
@@ -409,11 +418,8 @@
             checkbox.className = 'step-checkbox';
             checkbox.checked = isCompleted;
             
-            if (item.isMerged) {
-                checkbox.dataset.originalStepIds = item.originalStepIds.join(',');
-            } else {
-                checkbox.dataset.stepId = item.id;
-            }
+            if (item.isMerged) checkbox.dataset.originalStepIds = item.originalStepIds.join(',');
+            else checkbox.dataset.stepId = item.id;
 
             const stepDiv = document.createElement('div');
             stepDiv.className = 'output-step';
@@ -424,8 +430,7 @@
                 <span class="output-icon">➡️</span>
                 <span>Paint: <strong>${item.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
             
-            container.appendChild(checkbox);
-            container.appendChild(stepDiv);
+            container.appendChild(checkbox); container.appendChild(stepDiv);
             wrapper.appendChild(container);
 
             if (item.completedParts && item.completedParts.length > 0) {
@@ -441,6 +446,7 @@
         
         function updateDynamicScheduleView() {
             outputDiv.innerHTML = '';
+            calculateProgress();
             const { completed, ready, waiting } = getTaskLists();
             
             const mergedReadySteps = new Map();
@@ -454,9 +460,9 @@
                 group.originalStepIds.push(step.id);
             });
             
-            completed.forEach(step => outputDiv.appendChild(createStepElement(step, false, true)));
-            mergedReadySteps.forEach(mergedStep => outputDiv.appendChild(createStepElement(mergedStep, true, false)));
-            waiting.forEach(step => outputDiv.appendChild(createStepElement(step, false, false)));
+            completed.forEach(step => outputDiv.appendChild(createStepElement(step, false, true, false)));
+            mergedReadySteps.forEach(mergedStep => outputDiv.appendChild(createStepElement(mergedStep, true, false, false)));
+            waiting.forEach(step => outputDiv.appendChild(createStepElement(step, false, false, true)));
         }
         
         function getTaskLists() {
@@ -472,9 +478,32 @@
             return { completed, ready, waiting };
         }
 
+        function calculateProgress() {
+            const { partNameToStepIds, completedStepIds } = scheduleData;
+            if (partNameToStepIds.size === 0) {
+                progressPercentageEl.textContent = ''; return;
+            }
+            let completedPartsCount = 0;
+            partNameToStepIds.forEach((stepIds, partName) => {
+                if (stepIds.every(id => completedStepIds.has(id))) {
+                    completedPartsCount++;
+                }
+            });
+            const percentage = Math.round((completedPartsCount / partNameToStepIds.size) * 100);
+            progressPercentageEl.textContent = `Progress: ${percentage}%`;
+        }
+
         function handleCheckboxChange(e) {
             const checkbox = e.target;
             if (!checkbox.matches('.step-checkbox')) return;
+            
+            const wrapper = checkbox.closest('.output-wrapper');
+            if (wrapper.classList.contains('is-waiting') && checkbox.checked) {
+                if (!confirm("This step is not ready yet because its prerequisites are not complete.\n\nAre you sure you want to mark it as done anyway?")) {
+                    e.preventDefault();
+                    return;
+                }
+            }
             
             const originalStepIdsStr = checkbox.dataset.originalStepIds;
             if(originalStepIdsStr){
@@ -493,10 +522,12 @@
             const base64State = btoa(unescape(encodeURIComponent(jsonState)));
             window.location.hash = base64State;
             navigator.clipboard.writeText(window.location.href).then(() => {
+                const saveFeedback = document.getElementById('save-feedback');
                 saveFeedback.textContent = 'Saved! Link copied to clipboard.';
                 saveFeedback.style.opacity = '1';
                 setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
             });
+            document.getElementById('save-btn').classList.remove('unsaved');
         }
 
         function loadStateFromHash() {
@@ -512,7 +543,6 @@
             } catch (e) {
                 console.error("Failed to load state from hash:", e);
                 alert("Could not load project. The link may be corrupted.");
-                return false;
             }
             return false;
         }
@@ -520,8 +550,9 @@
         function _performReset() {
             state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0;
-            scheduleData = { steps: [], completedStepIds: new Set() };
+            scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map() };
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
+            progressPercentageEl.textContent = '';
             outputSection.classList.remove('invalidated');
             history.pushState("", document.title, window.location.pathname + window.location.search);
             exitStampMode();
@@ -565,12 +596,8 @@
         outputDiv.addEventListener('change', handleCheckboxChange);
         
         // INITIALIZATION
-        if (!loadStateFromHash()) {
-            loadInitialData();
-        } else {
-            document.title = state.title + " - Paint Sequencer";
-            renderAll();
-        }
+        if (!loadStateFromHash()) loadInitialData();
+        else { document.title = state.title + " - Paint Sequencer"; renderAll(); }
     });
     </script>
 </body>
