@@ -470,114 +470,156 @@
             return completedPartsByStepId.get(prereqStepId)?.has(partName) ?? false;
         }
 
+        function createStepWrapper(stepInfo) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'step-wrapper';
+
+            let indicatorIcon = '🛑';
+            let indicatorTitle = 'No parts are ready yet.';
+            let indicatorClass = 'stop';
+            
+            const remainingPartsInStep = stepInfo.partList.length - stepInfo.completedCount;
+            if (remainingPartsInStep > 0) {
+                if (stepInfo.startableCount === remainingPartsInStep) {
+                    indicatorIcon = '⭐'; indicatorTitle = 'All remaining parts are ready.'; indicatorClass = 'full';
+                } else if (stepInfo.startableCount > 0) {
+                    indicatorIcon = '▶️'; indicatorTitle = 'Some parts are ready.'; indicatorClass = 'partial';
+                }
+            }
+
+            if (stepInfo.completedCount === stepInfo.partList.length) {
+                wrapper.classList.add('is-completed');
+            }
+            if(scheduleData.targetPathStepIds.has(stepInfo.id)) {
+                wrapper.classList.add('is-target-path');
+            }
+            
+            let countText = '';
+            if(stepInfo.startableCount > 0) {
+               countText = ` (${stepInfo.startableCount} of ${remainingPartsInStep} ready)`;
+            }
+            
+            wrapper.innerHTML = `
+                <div class="step-header">
+                    <span class="start-indicator ${indicatorClass}" title="${indicatorTitle}">${indicatorIcon}</span>
+                    <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepInfo.color)}</code>${countText}</span>
+                    <label class="check-all-label">
+                        <input type="checkbox" class="master-checkbox" data-step-id="${stepInfo.id}" ${stepInfo.startableCount === 0 ? 'disabled' : ''}> Check All Ready
+                    </label>
+                </div>
+                <ul class="parts-checklist">${generatePartListHTML(stepInfo)}</ul>
+                <div class="completion-notices">${generateCompletionNoticesHTML(stepInfo)}</div>`;
+
+            return wrapper;
+        }
+
+        function createMergedStepWrapper(stepGroup) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'step-wrapper';
+            
+            const allOriginalIds = stepGroup.map(s => s.id);
+            const isTargetPath = allOriginalIds.some(id => scheduleData.targetPathStepIds.has(id));
+            if(isTargetPath) wrapper.classList.add('is-target-path');
+
+            const totalStartable = stepGroup.reduce((sum, s) => sum + s.startableCount, 0);
+            const totalRemaining = stepGroup.reduce((sum, s) => sum + (s.partList.length - s.completedCount), 0);
+            
+            let countText = ` (${totalStartable} of ${totalRemaining} ready)`;
+            
+            const masterCheck = `<label class="check-all-label">
+                <input type="checkbox" class="master-checkbox" data-original-step-ids="${allOriginalIds.join(',')}" ${totalStartable === 0 ? 'disabled' : ''}> Check All Ready
+            </label>`;
+            
+            let partListHTML = '';
+            let noticesHTML = '';
+            stepGroup.forEach(stepInfo => {
+                partListHTML += generatePartListHTML(stepInfo);
+                noticesHTML += generateCompletionNoticesHTML(stepInfo);
+            });
+
+            wrapper.innerHTML = `
+                <div class="step-header">
+                    <span class="start-indicator full" title="All remaining parts are ready.">⭐</span>
+                    <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepGroup[0].color)}</code>${countText}</span>
+                    ${masterCheck}
+                </div>
+                <ul class="parts-checklist">${partListHTML}</ul>
+                <div class="completion-notices">${noticesHTML}</div>`;
+                
+            return wrapper;
+        }
+        
+        function generatePartListHTML(stepInfo) {
+            return stepInfo.partList.sort().map(partName => {
+                const isCompleted = scheduleData.completedPartsByStepId.get(stepInfo.id)?.has(partName) ?? false;
+                const canStart = !isCompleted && isPartStartable(partName, stepInfo.id);
+                let classes = 'part-item';
+                if (isCompleted) classes += ' completed';
+                if (!canStart && !isCompleted) classes += ' waiting';
+
+                return `<li class="${classes}">
+                    <label>
+                        <input type="checkbox" class="part-checkbox" data-step-id="${stepInfo.id}" data-part-name="${sanitizeHTML(partName)}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
+                        ${sanitizeHTML(partName)}
+                    </label>
+                </li>`;
+            }).join('');
+        }
+        
+        function generateCompletionNoticesHTML(stepInfo) {
+            let html = '';
+            const partsThatWillBeCompleted = stepInfo.completedParts.filter(p => !scheduleData.completedPartsByStepId.get(stepInfo.id)?.has(p));
+            const partsAlreadyCompletedOnFinalStep = stepInfo.completedParts.filter(p => scheduleData.completedPartsByStepId.get(stepInfo.id)?.has(p));
+            if (partsThatWillBeCompleted.length > 0) {
+                 html += `<div class="completion-notice"><span>🏆</span><div>Will complete: <strong>${partsThatWillBeCompleted.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
+            }
+            if (partsAlreadyCompletedOnFinalStep.length > 0) {
+                html += `<div class="completion-notice"><span>✔️</span><div>Completed: <strong>${partsAlreadyCompletedOnFinalStep.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
+            }
+            return html;
+        }
+
         function updateScheduleView() {
             outputDiv.innerHTML = '';
             calculateProgress();
-            
+
+            const completedSteps = [], fullyReadySteps = [], partiallyReadySteps = [], waitingSteps = [];
             scheduleData.steps.forEach(step => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'step-wrapper';
-                if(scheduleData.targetPathStepIds.has(step.id)) {
-                    wrapper.classList.add('is-target-path');
-                }
-
-                const stepHeader = document.createElement('div');
-                stepHeader.className = 'step-header';
-                
-                const partListEl = document.createElement('ul');
-                partListEl.className = 'parts-checklist';
-
-                let completedCount = 0;
-                let startableCount = 0;
-                let startableCheckedCount = 0;
-                
-                step.partList.sort().forEach(partName => {
+                let completedCount = 0, startableCount = 0;
+                step.partList.forEach(partName => {
                     const isCompleted = scheduleData.completedPartsByStepId.get(step.id)?.has(partName) ?? false;
-                    const canStart = !isCompleted && isPartStartable(partName, step.id);
-                    
-                    if(isCompleted) completedCount++;
-                    if(canStart) {
+                    if(isCompleted) {
+                        completedCount++;
+                    } else if(isPartStartable(partName, step.id)) {
                         startableCount++;
-                        if(isCompleted) startableCheckedCount++; // This logic is wrong, will fix
                     }
-
-                    const li = document.createElement('li');
-                    li.className = 'part-item';
-                    if (isCompleted) li.classList.add('completed');
-                    if (!canStart && !isCompleted) li.classList.add('waiting');
-
-                    li.innerHTML = `<label>
-                        <input type="checkbox" class="part-checkbox" data-step-id="${step.id}" data-part-name="${sanitizeHTML(partName)}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
-                        ${sanitizeHTML(partName)}
-                    </label>`;
-                    partListEl.appendChild(li);
                 });
+                
+                const stepInfo = { ...step, completedCount, startableCount };
+                const remainingParts = step.partList.length - completedCount;
 
-                const remainingPartsInStep = step.partList.length - completedCount;
-
-                const indicator = document.createElement('span');
-                indicator.className = 'start-indicator';
-                if (remainingPartsInStep > 0) {
-                    if (startableCount === remainingPartsInStep) {
-                        indicator.textContent = '⭐';
-                        indicator.title = 'All remaining parts are ready.';
-                        indicator.classList.add('full');
-                    } else if (startableCount > 0) {
-                        indicator.textContent = '▶️';
-                        indicator.title = 'Some parts are ready.';
-                        indicator.classList.add('partial');
-                    } else {
-                        indicator.textContent = '🛑';
-                        indicator.title = 'No parts are ready yet.';
-                        indicator.classList.add('stop');
-                    }
+                if (remainingParts === 0) {
+                    completedSteps.push(stepInfo);
+                } else if (startableCount === remainingParts) {
+                    fullyReadySteps.push(stepInfo);
+                } else if (startableCount > 0) {
+                    partiallyReadySteps.push(stepInfo);
+                } else {
+                    waitingSteps.push(stepInfo);
                 }
-                
-                if (completedCount === step.partList.length) {
-                    wrapper.classList.add('is-completed');
-                }
-                
-                let countText = '';
-                if(startableCount > 0) {
-                   countText = ` (${startableCount} of ${remainingPartsInStep} ready)`;
-                }
-                
-                const masterCheck = `<label class="check-all-label">
-                    <input type="checkbox" class="master-checkbox" data-step-id="${step.id}" ${startableCount === 0 ? 'disabled' : ''}> Check All Ready
-                </label>`;
-
-                stepHeader.innerHTML = `
-                    <span class="start-indicator-container">${indicator.outerHTML}</span>
-                    <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(step.color)}</code>${countText}</span>
-                    ${masterCheck}`;
-
-                wrapper.appendChild(stepHeader);
-                wrapper.appendChild(partListEl);
-
-                // Completion Notices
-                const noticesDiv = document.createElement('div');
-                noticesDiv.className = 'completion-notices';
-                
-                const partsThatWillBeCompleted = step.completedParts.filter(p => !scheduleData.completedPartsByStepId.get(step.id)?.has(p));
-                const partsAlreadyCompletedOnFinalStep = step.completedParts.filter(p => scheduleData.completedPartsByStepId.get(step.id)?.has(p));
-
-                if (partsThatWillBeCompleted.length > 0) {
-                    const notice = document.createElement('div');
-                    notice.className = 'completion-notice';
-                    notice.innerHTML = `<span>🏆</span><div>Will complete: <strong>${partsThatWillBeCompleted.map(sanitizeHTML).sort().join(', ')}</strong></div>`;
-                    noticesDiv.appendChild(notice);
-                }
-                
-                if (partsAlreadyCompletedOnFinalStep.length > 0) {
-                    const notice = document.createElement('div');
-                    notice.className = 'completion-notice';
-                    notice.innerHTML = `<span>✔️</span><div>Completed: <strong>${partsAlreadyCompletedOnFinalStep.map(sanitizeHTML).sort().join(', ')}</strong></div>`;
-                    noticesDiv.appendChild(notice);
-                }
-                if (noticesDiv.hasChildNodes()) wrapper.appendChild(noticesDiv);
-                
-                outputDiv.appendChild(wrapper);
             });
+            
+            const mergedReadyGroups = new Map();
+            fullyReadySteps.forEach(stepInfo => {
+                if(!mergedReadyGroups.has(stepInfo.color)) mergedReadyGroups.set(stepInfo.color, []);
+                mergedReadyGroups.get(stepInfo.color).push(stepInfo);
+            });
+            
+            // Render in order: Completed, Merged Ready, Partial, Waiting
+            completedSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
+            mergedReadyGroups.forEach(group => outputDiv.appendChild(createMergedStepWrapper(group)));
+            partiallyReadySteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
+            waitingSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
         }
         
         function calculateProgress() {
@@ -596,38 +638,30 @@
 
         function handleOutputChange(e) {
             const target = e.target;
-            if (target.matches('.part-checkbox')) {
-                const stepId = parseInt(target.dataset.stepId);
-                const partName = target.dataset.partName;
-
-                if (!scheduleData.completedPartsByStepId.has(stepId)) {
+            
+            function togglePart(stepId, partName, shouldBeChecked) {
+                 if (!scheduleData.completedPartsByStepId.has(stepId)) {
                     scheduleData.completedPartsByStepId.set(stepId, new Set());
                 }
                 const completedSet = scheduleData.completedPartsByStepId.get(stepId);
+                if (shouldBeChecked) completedSet.add(partName); else completedSet.delete(partName);
+            }
 
-                if (target.checked) {
-                    completedSet.add(partName);
-                } else {
-                    completedSet.delete(partName);
-                }
+            if (target.matches('.part-checkbox')) {
+                togglePart(parseInt(target.dataset.stepId), target.dataset.partName, target.checked);
                 updateScheduleView();
             } else if (target.matches('.master-checkbox')) {
-                const stepId = parseInt(target.dataset.stepId);
                 const isChecking = target.checked;
-                const step = scheduleData.steps.find(s => s.id === stepId);
-                if (!step) return;
+                const stepIds = (target.dataset.originalStepIds || target.dataset.stepId).split(',').map(Number);
 
-                if (!scheduleData.completedPartsByStepId.has(stepId)) {
-                    scheduleData.completedPartsByStepId.set(stepId, new Set());
-                }
-                const completedSet = scheduleData.completedPartsByStepId.get(stepId);
-
-                step.partList.forEach(partName => {
-                    const isCompleted = completedSet.has(partName);
-                    if (!isCompleted && isPartStartable(partName, step.id)) {
-                        if(isChecking) completedSet.add(partName);
-                        else completedSet.delete(partName);
-                    }
+                stepIds.forEach(stepId => {
+                    const step = scheduleData.steps.find(s => s.id === stepId);
+                    if (!step) return;
+                    step.partList.forEach(partName => {
+                        if (!scheduleData.completedPartsByStepId.get(stepId)?.has(partName) && isPartStartable(partName, stepId)) {
+                            togglePart(stepId, partName, isChecking);
+                        }
+                    });
                 });
                 updateScheduleView();
             }
