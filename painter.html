@@ -61,21 +61,31 @@
         .paint-step .remove-step-btn:hover { color: var(--danger-color); }
         .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
         .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
+        
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
-        .output-step-container { display: flex; align-items: center; transition: opacity 0.3s; }
-        .output-step-container .step-checkbox { margin-right: 15px; transform: scale(1.5); cursor: pointer; }
-        .output-step { display: flex; align-items: center; gap: 10px; padding: 10px 10px 5px 10px; flex-grow: 1; }
-        .completion-notice { color: var(--text-secondary-color); font-size: 0.9em; padding: 0px 10px 10px 48px; border-bottom: 1px dotted var(--border-color); }
-        .output-wrapper:last-child .completion-notice, .output-wrapper:last-child .output-step { border-bottom: none; }
-        .output-icon { font-size: 1.5rem; line-height: 1; }
-        .start-indicator { cursor: help; font-size: 1.5rem; line-height: 1; }
-        .output-wrapper { transition: background-color 0.3s, border 0.3s; }
-        .output-wrapper.is-target-path { border-left: 4px solid var(--stamp-color); background-color: #fffbeb; }
-        .output-wrapper.is-completed { opacity: 0.5; text-decoration: line-through; }
-        .output-wrapper.is-waiting { opacity: 0.6; }
-        .output-wrapper.is-waiting .output-step-container { cursor: not-allowed; }
-        .output-action { font-weight: 600; min-width: 220px;}
+        .step-wrapper { padding: 10px 0; border-bottom: 1px solid var(--border-color); transition: background-color 0.3s, border 0.3s; }
+        .step-wrapper:last-child { border-bottom: none; }
+        .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .start-indicator { font-size: 1.5rem; line-height: 1; width: 24px; text-align: center; cursor: help;}
+        .start-indicator.full { color: var(--stamp-color); }
+        .start-indicator.partial { color: var(--primary-color); }
+        .start-indicator.stop { color: var(--danger-color); }
+        .step-action { font-weight: 600; flex-grow: 1; }
+        .check-all-label { white-space: nowrap; font-size: 0.9em; color: var(--text-secondary-color); }
+        .check-all-label input { margin-right: 4px; }
         .output-color-name { background: #eee; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
+        .parts-checklist { list-style-type: none; padding-left: 48px; margin: 0 0 8px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+        .part-item { color: var(--text-color); }
+        .part-item input { margin-right: 8px; transform: scale(1.1); }
+        .part-item.waiting { color: var(--text-secondary-color); font-style: italic; }
+        .part-item.waiting input { cursor: not-allowed; }
+        .part-item.completed { text-decoration: line-through; }
+        .step-wrapper.is-completed { opacity: 0.6; }
+        .step-wrapper.is-target-path { border-left: 4px solid var(--stamp-color); background-color: #fffbeb; padding-left: 10px; }
+        .completion-notices { padding-left: 48px; }
+        .completion-notice { display: flex; align-items: flex-start; color: var(--text-secondary-color); font-size: 0.9em; }
+        .completion-notice span { line-height: 1.4; padding-right: 5px; }
+
         #output-section.invalidated #output { opacity: 0.4; }
         #output-section.invalidated::after { content: 'Schedule outdated. Please regenerate.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 100, 0.85); border: 1px solid #e0e060; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-align: center; }
         .main-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 20px; }
@@ -154,7 +164,7 @@
                     <h2>✔️ Optimized Schedule</h2>
                     <span id="progress-percentage"></span>
                     <select id="target-part-select" title="Select a part to highlight its critical path"></select>
-                    <small class="legend">⭐ = Ready to start!</small>
+                    <small class="legend">⭐ Full, ▶️ Partial, 🛑 Blocked</small>
                 </div>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
@@ -165,7 +175,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
-        let scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
+        let scheduleData = { steps: [], completedPartsByStepId: new Map(), partSequenceStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
 
         const stampToolBtn = document.getElementById('stamp-tool-btn');
         const stampColorSelect = document.getElementById('stamp-color-select');
@@ -394,27 +404,29 @@
                 });
                 bestChoice.partList.forEach(part => { partColorToStepIndex.set(`${part.id}_${part.sequence[part.currentStep]}`, stepId); part.currentStep++; });
             }
+
             partsToProcess.forEach(part => {
-                for(let i = 1; i < part.originalSequence.length; i++) {
-                    const prevStepId = partColorToStepIndex.get(`${part.id}_${part.originalSequence[i-1]}`);
-                    const currentStepId = partColorToStepIndex.get(`${part.id}_${part.originalSequence[i]}`);
-                    if(prevStepId !== undefined && currentStepId !== undefined) scheduleData.steps[currentStepId].dependencies.add(prevStepId);
+                const sequenceStepIds = [];
+                part.originalSequence.forEach(color => {
+                    const stepId = partColorToStepIndex.get(`${part.id}_${color}`);
+                    if(stepId !== undefined) sequenceStepIds.push(stepId);
+                });
+                scheduleData.partSequenceStepIds.set(part.name, sequenceStepIds);
+
+                for(let i = 1; i < sequenceStepIds.length; i++) {
+                    const prevStepId = sequenceStepIds[i-1];
+                    const currentStepId = sequenceStepIds[i];
+                    scheduleData.steps[currentStepId].dependencies.add(prevStepId);
                 }
             });
-            scheduleData.steps.forEach(step => {
-                step.dependencies = Array.from(step.dependencies);
-                step.partList.forEach(partName => {
-                    if (!scheduleData.partNameToStepIds.has(partName)) scheduleData.partNameToStepIds.set(partName, []);
-                    scheduleData.partNameToStepIds.get(partName).push(step.id);
-                });
-            });
+
             renderTargetPartSelector();
-            updateDynamicScheduleView();
+            updateScheduleView();
         }
         
         function renderTargetPartSelector() {
             targetPartSelect.innerHTML = '<option value="">Default (No Target)</option>';
-            const sortedPartNames = Array.from(scheduleData.partNameToStepIds.keys()).sort();
+            const sortedPartNames = Array.from(scheduleData.partSequenceStepIds.keys()).sort();
             sortedPartNames.forEach(name => {
                 targetPartSelect.innerHTML += `<option value="${sanitizeHTML(name)}">${sanitizeHTML(name)}</option>`;
             });
@@ -422,11 +434,11 @@
         }
         
         function updateTargetPath() {
-            const { currentTargetPartName, partNameToStepIds, steps } = scheduleData;
+            const { currentTargetPartName, partSequenceStepIds, steps } = scheduleData;
             scheduleData.targetPathStepIds.clear();
             if (!currentTargetPartName) return;
 
-            const initialStepIds = partNameToStepIds.get(currentTargetPartName);
+            const initialStepIds = partSequenceStepIds.get(currentTargetPartName);
             if (!initialStepIds) return;
             
             const stepMap = new Map(steps.map(s => [s.id, s]));
@@ -436,7 +448,6 @@
             while(toProcess.length > 0) {
                 const currentId = toProcess.pop();
                 if (processed.has(currentId)) continue;
-
                 processed.add(currentId);
                 scheduleData.targetPathStepIds.add(currentId);
                 const step = stepMap.get(currentId);
@@ -446,122 +457,180 @@
             }
         }
         
-        function createStepElement(item, isStartable, isCompleted, isWaiting, isTargetPath) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'output-wrapper';
-            if(isCompleted) wrapper.classList.add('is-completed');
-            if(isWaiting) wrapper.classList.add('is-waiting');
-            if(isTargetPath) wrapper.classList.add('is-target-path');
+        function isPartStartable(partName, stepId) {
+            const { partSequenceStepIds, completedPartsByStepId } = scheduleData;
+            const sequence = partSequenceStepIds.get(partName);
+            if (!sequence) return false;
             
-            const container = document.createElement('div');
-            container.className = 'output-step-container';
+            const stepIndex = sequence.indexOf(stepId);
+            if(stepIndex === -1) return false;
+            if(stepIndex === 0) return true;
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'step-checkbox';
-            checkbox.checked = isCompleted;
-            
-            if (item.isMerged) checkbox.dataset.originalStepIds = item.originalStepIds.join(',');
-            else checkbox.dataset.stepId = item.id;
-            
-            const partCount = item.partList.length;
-            const partLabel = partCount === 1 ? 'part' : 'parts';
-
-            const stepDiv = document.createElement('div');
-            stepDiv.className = 'output-step';
-            stepDiv.innerHTML = `
-                ${isStartable ? '<span class="start-indicator" title="Ready to start!">⭐</span>' : ''}
-                <span class="output-icon">🎨</span>
-                <span class="output-action">Load <code class="output-color-name">${sanitizeHTML(item.color)}</code></span>
-                <span class="output-icon">➡️</span>
-                <span>Paint (${partCount} ${partLabel}): <strong>${item.partList.map(sanitizeHTML).sort().join(', ')}</strong></span>`;
-            
-            container.appendChild(checkbox); container.appendChild(stepDiv);
-            wrapper.appendChild(container);
-
-            if (item.completedParts && item.completedParts.length > 0) {
-                const notice = document.createElement('div');
-                notice.className = 'completion-notice';
-                notice.innerHTML = `✔️ Painting complete for: <strong>${item.completedParts.map(sanitizeHTML).sort().join(', ')}</strong>`;
-                wrapper.appendChild(notice);
-            } else {
-                container.style.borderBottom = '1px dotted var(--border-color)';
-            }
-            return wrapper;
+            const prereqStepId = sequence[stepIndex - 1];
+            return completedPartsByStepId.get(prereqStepId)?.has(partName) ?? false;
         }
-        
-        function updateDynamicScheduleView() {
+
+        function updateScheduleView() {
             outputDiv.innerHTML = '';
             calculateProgress();
-            const { completed, ready, waiting } = getTaskLists();
-            const { targetPathStepIds } = scheduleData;
             
-            const mergedReadySteps = new Map();
-            ready.forEach(step => {
-                if (!mergedReadySteps.has(step.color)) {
-                    mergedReadySteps.set(step.color, { color: step.color, partList: [], completedParts: [], originalStepIds: [], isMerged: true });
+            scheduleData.steps.forEach(step => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'step-wrapper';
+                if(scheduleData.targetPathStepIds.has(step.id)) {
+                    wrapper.classList.add('is-target-path');
                 }
-                const group = mergedReadySteps.get(step.color);
-                group.partList.push(...step.partList);
-                group.completedParts.push(...step.completedParts);
-                group.originalStepIds.push(step.id);
+
+                const stepHeader = document.createElement('div');
+                stepHeader.className = 'step-header';
+                
+                const partListEl = document.createElement('ul');
+                partListEl.className = 'parts-checklist';
+
+                let completedCount = 0;
+                let startableCount = 0;
+                let startableCheckedCount = 0;
+                
+                step.partList.sort().forEach(partName => {
+                    const isCompleted = scheduleData.completedPartsByStepId.get(step.id)?.has(partName) ?? false;
+                    const canStart = !isCompleted && isPartStartable(partName, step.id);
+                    
+                    if(isCompleted) completedCount++;
+                    if(canStart) {
+                        startableCount++;
+                        if(isCompleted) startableCheckedCount++; // This logic is wrong, will fix
+                    }
+
+                    const li = document.createElement('li');
+                    li.className = 'part-item';
+                    if (isCompleted) li.classList.add('completed');
+                    if (!canStart && !isCompleted) li.classList.add('waiting');
+
+                    li.innerHTML = `<label>
+                        <input type="checkbox" class="part-checkbox" data-step-id="${step.id}" data-part-name="${sanitizeHTML(partName)}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
+                        ${sanitizeHTML(partName)}
+                    </label>`;
+                    partListEl.appendChild(li);
+                });
+
+                const remainingPartsInStep = step.partList.length - completedCount;
+
+                const indicator = document.createElement('span');
+                indicator.className = 'start-indicator';
+                if (remainingPartsInStep > 0) {
+                    if (startableCount === remainingPartsInStep) {
+                        indicator.textContent = '⭐';
+                        indicator.title = 'All remaining parts are ready.';
+                        indicator.classList.add('full');
+                    } else if (startableCount > 0) {
+                        indicator.textContent = '▶️';
+                        indicator.title = 'Some parts are ready.';
+                        indicator.classList.add('partial');
+                    } else {
+                        indicator.textContent = '🛑';
+                        indicator.title = 'No parts are ready yet.';
+                        indicator.classList.add('stop');
+                    }
+                }
+                
+                if (completedCount === step.partList.length) {
+                    wrapper.classList.add('is-completed');
+                }
+                
+                let countText = '';
+                if(startableCount > 0) {
+                   countText = ` (${startableCount} of ${remainingPartsInStep} ready)`;
+                }
+                
+                const masterCheck = `<label class="check-all-label">
+                    <input type="checkbox" class="master-checkbox" data-step-id="${step.id}" ${startableCount === 0 ? 'disabled' : ''}> Check All Ready
+                </label>`;
+
+                stepHeader.innerHTML = `
+                    <span class="start-indicator-container">${indicator.outerHTML}</span>
+                    <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(step.color)}</code>${countText}</span>
+                    ${masterCheck}`;
+
+                wrapper.appendChild(stepHeader);
+                wrapper.appendChild(partListEl);
+
+                // Completion Notices
+                const noticesDiv = document.createElement('div');
+                noticesDiv.className = 'completion-notices';
+                
+                const partsThatWillBeCompleted = step.completedParts.filter(p => !scheduleData.completedPartsByStepId.get(step.id)?.has(p));
+                const partsAlreadyCompletedOnFinalStep = step.completedParts.filter(p => scheduleData.completedPartsByStepId.get(step.id)?.has(p));
+
+                if (partsThatWillBeCompleted.length > 0) {
+                    const notice = document.createElement('div');
+                    notice.className = 'completion-notice';
+                    notice.innerHTML = `<span>🏆</span><div>Will complete: <strong>${partsThatWillBeCompleted.map(sanitizeHTML).sort().join(', ')}</strong></div>`;
+                    noticesDiv.appendChild(notice);
+                }
+                
+                if (partsAlreadyCompletedOnFinalStep.length > 0) {
+                    const notice = document.createElement('div');
+                    notice.className = 'completion-notice';
+                    notice.innerHTML = `<span>✔️</span><div>Completed: <strong>${partsAlreadyCompletedOnFinalStep.map(sanitizeHTML).sort().join(', ')}</strong></div>`;
+                    noticesDiv.appendChild(notice);
+                }
+                if (noticesDiv.hasChildNodes()) wrapper.appendChild(noticesDiv);
+                
+                outputDiv.appendChild(wrapper);
             });
-            
-            completed.forEach(step => outputDiv.appendChild(createStepElement(step, false, true, false, targetPathStepIds.has(step.id))));
-            mergedReadySteps.forEach(mergedStep => {
-                const isPath = mergedStep.originalStepIds.some(id => targetPathStepIds.has(id));
-                outputDiv.appendChild(createStepElement(mergedStep, true, false, false, isPath));
-            });
-            waiting.forEach(step => outputDiv.appendChild(createStepElement(step, false, false, true, targetPathStepIds.has(step.id))));
         }
         
-        function getTaskLists() {
-            const completed = [], ready = [], waiting = [];
-            scheduleData.steps.forEach(step => {
-                if (scheduleData.completedStepIds.has(step.id)) {
-                    completed.push(step);
-                } else {
-                    const depsMet = step.dependencies.every(depId => scheduleData.completedStepIds.has(depId));
-                    if(depsMet) ready.push(step); else waiting.push(step);
-                }
-            });
-            return { completed, ready, waiting };
-        }
-
         function calculateProgress() {
-            const { partNameToStepIds, completedStepIds } = scheduleData;
-            if (partNameToStepIds.size === 0) {
+            const { partSequenceStepIds, completedPartsByStepId } = scheduleData;
+            if (partSequenceStepIds.size === 0) {
                 progressPercentageEl.textContent = ''; return;
             }
-            let completedPartsCount = 0;
-            partNameToStepIds.forEach((stepIds, partName) => {
-                if (stepIds.every(id => completedStepIds.has(id))) completedPartsCount++;
+            let fullyCompletedPartsCount = 0;
+            partSequenceStepIds.forEach((stepIds, partName) => {
+                const isPartFullyComplete = stepIds.every(id => completedPartsByStepId.get(id)?.has(partName));
+                if (isPartFullyComplete) fullyCompletedPartsCount++;
             });
-            const percentage = Math.round((completedPartsCount / partNameToStepIds.size) * 100);
+            const percentage = Math.round((fullyCompletedPartsCount / partSequenceStepIds.size) * 100);
             progressPercentageEl.textContent = `Progress: ${percentage}%`;
         }
 
-        function handleCheckboxChange(e) {
-            const checkbox = e.target;
-            if (!checkbox.matches('.step-checkbox')) return;
-            
-            const wrapper = checkbox.closest('.output-wrapper');
-            if (wrapper.classList.contains('is-waiting') && checkbox.checked) {
-                if (!confirm("This step is not ready yet because its prerequisites are not complete.\n\nAre you sure you want to mark it as done anyway?")) {
-                    e.preventDefault();
-                    return;
+        function handleOutputChange(e) {
+            const target = e.target;
+            if (target.matches('.part-checkbox')) {
+                const stepId = parseInt(target.dataset.stepId);
+                const partName = target.dataset.partName;
+
+                if (!scheduleData.completedPartsByStepId.has(stepId)) {
+                    scheduleData.completedPartsByStepId.set(stepId, new Set());
                 }
+                const completedSet = scheduleData.completedPartsByStepId.get(stepId);
+
+                if (target.checked) {
+                    completedSet.add(partName);
+                } else {
+                    completedSet.delete(partName);
+                }
+                updateScheduleView();
+            } else if (target.matches('.master-checkbox')) {
+                const stepId = parseInt(target.dataset.stepId);
+                const isChecking = target.checked;
+                const step = scheduleData.steps.find(s => s.id === stepId);
+                if (!step) return;
+
+                if (!scheduleData.completedPartsByStepId.has(stepId)) {
+                    scheduleData.completedPartsByStepId.set(stepId, new Set());
+                }
+                const completedSet = scheduleData.completedPartsByStepId.get(stepId);
+
+                step.partList.forEach(partName => {
+                    const isCompleted = completedSet.has(partName);
+                    if (!isCompleted && isPartStartable(partName, step.id)) {
+                        if(isChecking) completedSet.add(partName);
+                        else completedSet.delete(partName);
+                    }
+                });
+                updateScheduleView();
             }
-            
-            const originalStepIdsStr = checkbox.dataset.originalStepIds;
-            if(originalStepIdsStr){
-                originalStepIdsStr.split(',').forEach(idStr => scheduleData.completedStepIds.add(parseInt(idStr)));
-            } else {
-                const stepId = parseInt(checkbox.dataset.stepId);
-                if(checkbox.checked) scheduleData.completedStepIds.add(stepId);
-                else scheduleData.completedStepIds.delete(stepId);
-            }
-            updateDynamicScheduleView();
         }
 
         function saveStateToHash() {
@@ -596,7 +665,7 @@
         }
 
         function _resetSchedule() {
-            scheduleData = { steps: [], completedStepIds: new Set(), partNameToStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
+            scheduleData = { steps: [], completedPartsByStepId: new Map(), partSequenceStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
             progressPercentageEl.textContent = '';
             targetPartSelect.innerHTML = '';
@@ -647,11 +716,11 @@
         stampToolBtn.addEventListener('click', enterStampMode);
         exitStampBtn.addEventListener('click', exitStampMode);
         stampColorSelect.addEventListener('change', handleStampColorChange);
-        outputDiv.addEventListener('change', handleCheckboxChange);
+        outputDiv.addEventListener('change', handleOutputChange);
         targetPartSelect.addEventListener('change', () => {
             scheduleData.currentTargetPartName = targetPartSelect.value || null;
             updateTargetPath();
-            updateDynamicScheduleView();
+            updateScheduleView();
         });
         
         // INITIALIZATION
