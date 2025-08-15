@@ -15,8 +15,9 @@
             --secondary-color: #42b72a;
             --secondary-hover-color: #36a420;
             --danger-color: #fa383e;
+            --warning-color: #ffc107;
+            --warning-hover-color: #e0ac00;
             --border-color: #dddfe2;
-            --stamp-color: #ffc107;
             --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
@@ -42,8 +43,8 @@
         .btn-add:hover, .btn-save.unsaved:hover { background-color: var(--secondary-hover-color); }
         .btn-danger { background-color: var(--danger-color); }
         .btn-danger:hover { background-color: #e03238; }
-        .btn-stamp { background-color: var(--stamp-color); color: var(--text-color); }
-        .btn-stamp:hover { background-color: #e0ac00; }
+        .btn-warning { background-color: var(--warning-color); color: var(--text-color); }
+        .btn-warning:hover { background-color: var(--warning-hover-color); }
         .item-list { list-style-type: none; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
         .item-list li { display: flex; align-items: center; background-color: var(--bg-color); border-radius: 15px; padding: 5px 5px 5px 12px; font-size: 0.9rem; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .editable-name { cursor: text; padding: 2px 4px; border-radius: 3px; }
@@ -61,13 +62,15 @@
         .paint-step .remove-step-btn:hover { color: var(--danger-color); }
         .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
         .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
-        
+        #stamp-tool-btn { background-color: var(--warning-color); color: var(--text-color); }
+        #stamp-tool-btn:hover { background-color: var(--warning-hover-color); }
+
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
         .step-wrapper { padding: 10px 0; border-bottom: 1px solid var(--border-color); transition: background-color 0.3s, border 0.3s; }
         .step-wrapper:last-child { border-bottom: none; }
         .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .start-indicator { font-size: 1.5rem; line-height: 1; width: 24px; text-align: center; cursor: help;}
-        .start-indicator.full { color: var(--stamp-color); }
+        .start-indicator.full { color: var(--warning-color); }
         .start-indicator.partial { color: var(--primary-color); }
         .start-indicator.stop { color: var(--danger-color); }
         .step-action { font-weight: 600; flex-grow: 1; }
@@ -81,7 +84,7 @@
         .part-item.waiting input { cursor: not-allowed; }
         .part-item.completed { text-decoration: line-through; }
         .step-wrapper.is-completed { opacity: 0.6; }
-        .step-wrapper.is-target-path { border-left: 4px solid var(--stamp-color); background-color: #fffbeb; padding-left: 10px; }
+        .step-wrapper.is-target-path { border-left: 4px solid var(--warning-color); background-color: #fffbeb; padding-left: 10px; }
         .completion-notices { padding-left: 48px; }
         .completion-notice { display: flex; align-items: flex-start; color: var(--text-secondary-color); font-size: 0.9em; }
         .completion-notice span { line-height: 1.4; padding-right: 5px; }
@@ -94,9 +97,9 @@
         .stamp-mode-active #stamp-tool-toolbar { display: flex; }
         .stamp-mode-active .add-paint-control, .stamp-mode-active .reorder-btn, .stamp-mode-active .remove-step-btn { display: none; }
         .drop-target { border: 2px dashed var(--border-color); border-radius: 6px; cursor: pointer; transition: all 0.2s; position: relative; }
-        .drop-target:hover { border-color: var(--stamp-color); background-color: #fff8e1; }
+        .drop-target:hover { border-color: var(--warning-color); background-color: #fff8e1; }
         .drop-target::before { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px; color: #ccc; transition: color 0.2s; }
-        .drop-target:hover::before { color: var(--stamp-color); }
+        .drop-target:hover::before { color: var(--warning-color); }
         .drop-target.large { width: 50px; height: 32px; }
         .drop-target.small { width: 20px; height: 32px; }
         
@@ -139,7 +142,7 @@
         <div class="card" id="sequence-card">
             <div class="card-header">
                 <h2>Assign Paint Sequence</h2>
-                <button id="stamp-tool-btn" class="btn-stamp">🖌️ Stamp Tool</button>
+                <button id="stamp-tool-btn">🖌️ Stamp Tool</button>
             </div>
             <div id="stamp-tool-toolbar">
                 <strong>Stamping with:</strong>
@@ -152,8 +155,10 @@
         <div class="card">
             <div class="main-controls">
                 <button id="save-btn" class="btn-save">💾 Save & Copy Link</button>
+                <button id="revert-btn" class="btn-danger" style="display: none;">↩️ Revert Changes</button>
                 <button id="generate-btn">✨ Generate Optimal Order</button>
-                <button id="reset-btn" class="btn-danger">🔄 Reset All</button>
+                <button id="reset-progress-btn" class="btn-warning">🔄 Reset Progress</button>
+                <button id="reset-btn" class="btn-danger">💣 Reset All</button>
             </div>
             <p style="text-align: center; margin: 10px 0 0 0;"><span id="save-feedback"></span></p>
         </div>
@@ -173,36 +178,41 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        let state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
+        let state = { projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let nextPartId = 0;
-        let scheduleData = { steps: [], completedPartsByStepId: new Map(), partSequenceStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
-
-        const stampToolBtn = document.getElementById('stamp-tool-btn');
-        const stampColorSelect = document.getElementById('stamp-color-select');
-        const exitStampBtn = document.getElementById('exit-stamp-btn');
-        const titleInput = document.getElementById('title-input');
+        let nextPaintId = 0;
+        let scheduleData = { steps: [], partToSequence: new Map(), completedTasks: new Set(), currentTargetPartName: null, targetPathStepIds: new Set() };
+        
         const saveBtn = document.getElementById('save-btn');
-        const paintInput = document.getElementById('paint-input');
+        const revertBtn = document.getElementById('revert-btn');
+        const generateBtn = document.getElementById('generate-btn');
+        const resetProgressBtn = document.getElementById('reset-progress-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const stampToolBtn = document.getElementById('stamp-tool-btn');
+        const exitStampBtn = document.getElementById('exit-stamp-btn');
         const addPaintBtn = document.getElementById('add-paint-btn');
-        const paintList = document.getElementById('paint-list');
-        const partInput = document.getElementById('part-input');
         const addPartBtn = document.getElementById('add-part-btn');
+        const titleInput = document.getElementById('title-input');
+        const paintInput = document.getElementById('paint-input');
+        const partInput = document.getElementById('part-input');
+        const paintList = document.getElementById('paint-list');
         const partList = document.getElementById('part-list');
         const partSequenceContainer = document.getElementById('part-sequence-container');
-        const generateBtn = document.getElementById('generate-btn');
-        const resetBtn = document.getElementById('reset-btn');
-        const outputSection = document.getElementById('output-section');
         const outputDiv = document.getElementById('output');
+        const outputSection = document.getElementById('output-section');
         const progressPercentageEl = document.getElementById('progress-percentage');
         const targetPartSelect = document.getElementById('target-part-select');
+        const stampColorSelect = document.getElementById('stamp-color-select');
         
         const sanitizeHTML = str => str.replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
+        const generateId = () => Math.random().toString(36).substring(2, 9);
+        const getTaskKey = (partName, color) => `${partName}__${color}`;
 
         const renderAll = () => { renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
         const renderTitle = () => { titleInput.value = state.title; };
         
         const renderPaintList = () => {
-             paintList.innerHTML = state.paints.map(p => `<li><span class="editable-name" contenteditable="true" data-original-name="${sanitizeHTML(p)}">${sanitizeHTML(p)}</span><span class="remove-btn" data-paint-name="${sanitizeHTML(p)}" title="Remove Paint">×</span></li>`).join('');
+             paintList.innerHTML = state.paints.map(p => `<li data-paint-id="${p.id}"><span class="editable-name" contenteditable="true" data-original-name="${sanitizeHTML(p.name)}">${sanitizeHTML(p.name)}</span><span class="remove-btn" data-paint-id="${p.id}" title="Remove Paint">×</span></li>`).join('');
         };
         const renderPartList = () => {
             partList.innerHTML = state.parts.map(p => `<li><span class="editable-name" contenteditable="true" data-part-id="${p.id}">${sanitizeHTML(p.name)}</span><span class="remove-btn" data-part-id="${p.id}" title="Remove Part">×</span></li>`).join('');
@@ -218,7 +228,7 @@
             sequenceCard.classList.toggle('stamp-mode-active', isStamping);
             state.parts.forEach(part => {
                 const row = document.createElement('div');
-                row.className = 'part-sequence-row';;
+                row.className = 'part-sequence-row';
                 row.dataset.partId = part.id;
                 let sequenceItems = [];
                 if (isStamping) {
@@ -236,7 +246,7 @@
                             <span class="remove-step-btn" data-index="${index}" title="Remove step">×</span>
                         </div>`);
                 }
-                let selectOptions = state.paints.map(p => `<option value="${sanitizeHTML(p)}">${sanitizeHTML(p)}</option>`).join('') || '<option disabled>Add paints first</option>';
+                let selectOptions = state.paints.map(p => `<option value="${sanitizeHTML(p.name)}">${sanitizeHTML(p.name)}</option>`).join('') || '<option disabled>Add paints first</option>';
                 row.innerHTML = `
                     <div class="part-name-label">${sanitizeHTML(part.name)}</div>
                     <div class="sequence-steps">${sequenceItems.join('')}</div>
@@ -245,7 +255,17 @@
             });
         }
         
-        function markAsUnsaved() { document.getElementById('save-btn').classList.add('unsaved'); }
+        function markAsUnsavedAndAutoSave() {
+            saveBtn.classList.add('unsaved');
+            revertBtn.style.display = 'inline-block';
+            autoSaveProjectState();
+        }
+
+        function markAsSaved() {
+            saveBtn.classList.remove('unsaved');
+            revertBtn.style.display = 'none';
+        }
+
         function invalidateSchedule() { if (scheduleData.steps.length > 0) outputSection.classList.add('invalidated'); }
 
         function enterStampMode() {
@@ -253,46 +273,59 @@
             state.stampMode.isActive = true;
             stampToolBtn.style.display = 'none';
             document.getElementById('stamp-tool-toolbar').style.display = 'flex';
-            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${sanitizeHTML(p)}">${sanitizeHTML(p)}</option>`).join('');
+            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${sanitizeHTML(p.name)}">${sanitizeHTML(p.name)}</option>`).join('');
             state.stampMode.color = stampColorSelect.value;
             renderAll();
         }
 
         function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; document.getElementById('stamp-tool-toolbar').style.display = 'none'; renderAll(); }
         function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
-        function handleTitleChange() { state.title = titleInput.value; markAsUnsaved(); }
         
-        function handleAddItems(inputEl, collection, createItem) {
+        function handleTitleChange() { 
+            state.title = titleInput.value; 
+            markAsUnsavedAndAutoSave();
+        }
+        
+        function handleAddItems(inputEl, collection, createItem, nameProp = 'name') {
             const values = inputEl.value.split(',').map(v => v.trim()).filter(Boolean);
             if (values.length === 0) return;
             values.forEach(value => { 
-                const exists = collection.some(item => (item.name || item) === value);
+                const exists = collection.some(item => item[nameProp] === value);
                 if (!exists) collection.push(createItem(value));
             });
-            inputEl.value = ''; invalidateSchedule(); markAsUnsaved(); renderAll();
+            inputEl.value = ''; 
+            invalidateSchedule(); 
+            markAsUnsavedAndAutoSave(); 
+            renderAll();
         }
 
-        function handleAddPaint() { handleAddItems(paintInput, state.paints, value => value); }
-        function handleAddPart() { handleAddItems(partInput, state.parts, value => ({ id: nextPartId++, name: value, sequence: [] })); }
+        function handleAddPaint() { handleAddItems(paintInput, state.paints, value => ({ id: nextPaintId++, name: value }), 'name'); }
+        function handleAddPart() { handleAddItems(partInput, state.parts, value => ({ id: nextPartId++, name: value, sequence: [] }), 'name'); }
         
         function handlePaintListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
-            const paintName = e.target.dataset.paintName;
-            if (state.parts.some(p => p.sequence.includes(paintName))) {
-                if (!confirm(`Warning: This will remove "${paintName}" from all part sequences. Proceed?`)) return;
-                state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintName); });
-            }
-            state.paints = state.paints.filter(p => p !== paintName);
-            invalidateSchedule(); markAsUnsaved(); renderAll();
-        }
+            const paintId = parseInt(e.target.dataset.paintId);
+            const paintToRemove = state.paints.find(p => p.id === paintId);
+            if (!paintToRemove) return;
 
+            if (state.parts.some(p => p.sequence.includes(paintToRemove.name))) {
+                if (!confirm(`Warning: This will remove "${paintToRemove.name}" from all part sequences. Proceed?`)) return;
+                state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintToRemove.name); });
+            }
+            state.paints = state.paints.filter(p => p.id !== paintId);
+            invalidateSchedule(); 
+            markAsUnsavedAndAutoSave(); 
+            renderAll();
+        }
         function handlePartListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
             const partId = parseInt(e.target.dataset.partId);
             const part = state.parts.find(p => p.id === partId);
             if (part && confirm(`Remove part "${part.name}"?`)) {
                 state.parts = state.parts.filter(p => p.id !== partId);
-                invalidateSchedule(); markAsUnsaved(); renderAll();
+                invalidateSchedule(); 
+                markAsUnsavedAndAutoSave(); 
+                renderAll();
             }
         }
 
@@ -300,42 +333,59 @@
             const target = e.target;
             const saveEdit = () => {
                 const newValue = target.textContent.trim();
-                let oldValue, isDuplicate;
-                
+                let oldValue;
+                let isDuplicate = false;
+
                 if (listType === 'paint') {
-                    oldValue = target.dataset.originalName;
-                    isDuplicate = state.paints.includes(newValue);
-                } else {
+                    const paintId = parseInt(target.closest('li').dataset.paintId);
+                    const paint = state.paints.find(p => p.id === paintId);
+                    if (!paint) return;
+                    oldValue = paint.name;
+                    isDuplicate = state.paints.some(p => p.name === newValue && p.id !== paintId);
+                } else { // part
                     const partId = parseInt(target.dataset.partId);
                     const part = state.parts.find(p => p.id === partId);
                     if (!part) return;
                     oldValue = part.name;
                     isDuplicate = state.parts.some(p => p.name === newValue && p.id !== partId);
                 }
-
+                
                 if (newValue === oldValue) return;
                 if (!newValue) { alert("Name cannot be empty."); target.textContent = oldValue; return; }
-                if (isDuplicate && newValue !== oldValue) { alert(`Name "${newValue}" already exists.`); target.textContent = oldValue; return; }
+                if (isDuplicate) { alert(`Name "${newValue}" already exists.`); target.textContent = oldValue; return; }
                 
+                const newCompletedTasks = new Set();
+                scheduleData.completedTasks.forEach(taskKey => {
+                    let [partName, paintName] = taskKey.split('__');
+                    if (listType === 'paint' && paintName === oldValue) { paintName = newValue; } 
+                    else if (listType === 'part' && partName === oldValue) { partName = newValue; }
+                    newCompletedTasks.add(getTaskKey(partName, paintName));
+                });
+                scheduleData.completedTasks = newCompletedTasks;
+                saveProgressToLocalStorage();
+
                 if (listType === 'paint') {
-                    const paintIndex = state.paints.indexOf(oldValue);
-                    if (paintIndex > -1) {
-                        state.paints[paintIndex] = newValue;
-                        state.parts.forEach(part => {
-                            part.sequence = part.sequence.map(color => color === oldValue ? newValue : color);
-                        });
-                    }
-                } else {
-                    const part = state.parts.find(p => p.id === parseInt(target.dataset.partId));
+                    const paint = state.paints.find(p => p.name === oldValue);
+                    if (paint) paint.name = newValue;
+                    state.parts.forEach(p => { p.sequence = p.sequence.map(c => c === oldValue ? newValue : c); });
+                    scheduleData.steps.forEach(s => { if(s.color === oldValue) s.color = newValue; });
+                } else { // part
+                    const part = state.parts.find(p => p.name === oldValue);
                     if (part) part.name = newValue;
+                    scheduleData.steps.forEach(s => { s.partList = s.partList.map(p => p === oldValue ? newValue : p); });
+                    scheduleData.partToSequence.forEach((seq, key) => { if(key === oldValue) { scheduleData.partToSequence.delete(key); scheduleData.partToSequence.set(newValue, seq); }});
+                    if(scheduleData.currentTargetPartName === oldValue) scheduleData.currentTargetPartName = newValue;
                 }
-                invalidateSchedule(); markAsUnsaved(); renderAll();
+                
+                markAsUnsavedAndAutoSave();
+                renderAll();
+                updateScheduleView();
             };
 
             if (e.type === 'keydown') {
-                if (e.key === 'Enter') { e.preventDefault(); target.blur(); }
-                if (e.key === 'Escape') {
-                    target.textContent = listType === 'paint' ? target.dataset.originalName : state.parts.find(p => p.id === parseInt(target.dataset.partId))?.name;
+                if(e.key === 'Enter') { e.preventDefault(); target.blur(); } 
+                else if (e.key === 'Escape') {
+                    target.textContent = target.dataset.originalName;
                     target.blur();
                 }
             } else if (e.type === 'blur') {
@@ -351,7 +401,7 @@
             if (state.stampMode.isActive && e.target.matches('.drop-target')) {
                 const insertIndex = parseInt(e.target.dataset.insertIndex);
                 part.sequence.splice(insertIndex, 0, state.stampMode.color);
-                markAsUnsaved(); invalidateSchedule(); renderAll(); return;
+                invalidateSchedule(); markAsUnsavedAndAutoSave(); renderAll(); return;
             }
             let stateChanged = false;
             if (e.target.matches('.add-step-btn')) {
@@ -364,21 +414,20 @@
                 if (dir === 'left' && index > 0) { [part.sequence[index], part.sequence[index - 1]] = [part.sequence[index - 1], part.sequence[index]]; stateChanged = true; } 
                 else if (dir === 'right' && index < part.sequence.length - 1) { [part.sequence[index], part.sequence[index + 1]] = [part.sequence[index + 1], part.sequence[index]]; stateChanged = true; }
             }
-            if (stateChanged) { invalidateSchedule(); markAsUnsaved(); renderAll(); }
+            if (stateChanged) { invalidateSchedule(); markAsUnsavedAndAutoSave(); renderAll(); }
         }
 
         function generateOptimalOrder() {
             if (state.parts.filter(p => p.sequence.length === 0).length > 0) {
                 if (!confirm(`Warning: Some parts have no paint sequence and will be ignored. Continue?`)) return;
             }
-            _resetSchedule();
+            _resetSchedule(false); // Keep progress but clear old schedule
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
             if (partsToProcess.length === 0) {
                 outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; return;
             }
             
-            const partColorToStepIndex = new Map();
             let stepIdCounter = 0;
             while (partsToProcess.some(p => p.currentStep < p.sequence.length)) {
                 const readyPartsByColor = new Map();
@@ -398,35 +447,19 @@
                 
                 const bestChoice = choices[0];
                 const stepId = stepIdCounter++;
-                scheduleData.steps.push({
-                    id: stepId, color: bestChoice.color, partList: bestChoice.partList.map(p => p.name),
-                    completedParts: bestChoice.partList.filter(p => p.currentStep + 1 === p.sequence.length).map(p => p.name), dependencies: new Set()
-                });
-                bestChoice.partList.forEach(part => { partColorToStepIndex.set(`${part.id}_${part.sequence[part.currentStep]}`, stepId); part.currentStep++; });
+                scheduleData.steps.push({ id: stepId, color: bestChoice.color, partList: bestChoice.partList.map(p => p.name) });
+                bestChoice.partList.forEach(part => { part.currentStep++; });
             }
 
-            partsToProcess.forEach(part => {
-                const sequenceStepIds = [];
-                part.originalSequence.forEach(color => {
-                    const stepId = partColorToStepIndex.get(`${part.id}_${color}`);
-                    if(stepId !== undefined) sequenceStepIds.push(stepId);
-                });
-                scheduleData.partSequenceStepIds.set(part.name, sequenceStepIds);
-
-                for(let i = 1; i < sequenceStepIds.length; i++) {
-                    const prevStepId = sequenceStepIds[i-1];
-                    const currentStepId = sequenceStepIds[i];
-                    scheduleData.steps[currentStepId].dependencies.add(prevStepId);
-                }
-            });
-
+            state.parts.forEach(part => { scheduleData.partToSequence.set(part.name, part.sequence); });
+            outputSection.classList.remove('invalidated');
             renderTargetPartSelector();
             updateScheduleView();
         }
         
         function renderTargetPartSelector() {
             targetPartSelect.innerHTML = '<option value="">Default (No Target)</option>';
-            const sortedPartNames = Array.from(scheduleData.partSequenceStepIds.keys()).sort();
+            const sortedPartNames = Array.from(scheduleData.partToSequence.keys()).sort();
             sortedPartNames.forEach(name => {
                 targetPartSelect.innerHTML += `<option value="${sanitizeHTML(name)}">${sanitizeHTML(name)}</option>`;
             });
@@ -434,49 +467,57 @@
         }
         
         function updateTargetPath() {
-            const { currentTargetPartName, partSequenceStepIds, steps } = scheduleData;
             scheduleData.targetPathStepIds.clear();
+            const { currentTargetPartName, partToSequence, steps } = scheduleData;
             if (!currentTargetPartName) return;
 
-            const initialStepIds = partSequenceStepIds.get(currentTargetPartName);
-            if (!initialStepIds) return;
+            const targetSequence = partToSequence.get(currentTargetPartName);
+            if (!targetSequence) return;
             
-            const stepMap = new Map(steps.map(s => [s.id, s]));
-            const toProcess = [...initialStepIds];
-            const processed = new Set();
+            let requiredTasks = new Set(targetSequence.map(color => getTaskKey(currentTargetPartName, color)));
+            let toProcess = [...requiredTasks];
+            while (toProcess.length > 0) {
+                const taskKey = toProcess.pop();
+                const [partName, color] = taskKey.split('__');
+                const sequence = partToSequence.get(partName);
+                if(!sequence) continue;
+                const colorIndex = sequence.indexOf(color);
 
-            while(toProcess.length > 0) {
-                const currentId = toProcess.pop();
-                if (processed.has(currentId)) continue;
-                processed.add(currentId);
-                scheduleData.targetPathStepIds.add(currentId);
-                const step = stepMap.get(currentId);
-                if (step) {
-                    step.dependencies.forEach(depId => toProcess.push(depId));
+                if (colorIndex > 0) {
+                    const prereqTaskKey = getTaskKey(partName, sequence[colorIndex - 1]);
+                    if (!requiredTasks.has(prereqTaskKey)) {
+                        requiredTasks.add(prereqTaskKey);
+                        toProcess.push(prereqTaskKey);
+                    }
                 }
             }
+
+            steps.forEach(step => {
+                for (const partName of step.partList) {
+                    if (requiredTasks.has(getTaskKey(partName, step.color))) {
+                        scheduleData.targetPathStepIds.add(step.id);
+                        break;
+                    }
+                }
+            });
         }
         
-        function isPartStartable(partName, stepId) {
-            const { partSequenceStepIds, completedPartsByStepId } = scheduleData;
-            const sequence = partSequenceStepIds.get(partName);
+        function isPartStartable(partName, color) {
+            const sequence = scheduleData.partToSequence.get(partName);
             if (!sequence) return false;
             
-            const stepIndex = sequence.indexOf(stepId);
-            if(stepIndex === -1) return false;
-            if(stepIndex === 0) return true;
+            const colorIndex = sequence.indexOf(color);
+            if(colorIndex <= 0) return true;
 
-            const prereqStepId = sequence[stepIndex - 1];
-            return completedPartsByStepId.get(prereqStepId)?.has(partName) ?? false;
+            const prereqColor = sequence[colorIndex - 1];
+            return scheduleData.completedTasks.has(getTaskKey(partName, prereqColor));
         }
 
         function createStepWrapper(stepInfo) {
             const wrapper = document.createElement('div');
             wrapper.className = 'step-wrapper';
 
-            let indicatorIcon = '🛑';
-            let indicatorTitle = 'No parts are ready yet.';
-            let indicatorClass = 'stop';
+            let indicatorIcon = '🛑'; let indicatorTitle = 'No parts are ready yet.'; let indicatorClass = 'stop';
             
             const remainingPartsInStep = stepInfo.partList.length - stepInfo.completedCount;
             if (remainingPartsInStep > 0) {
@@ -487,17 +528,11 @@
                 }
             }
 
-            if (stepInfo.completedCount === stepInfo.partList.length) {
-                wrapper.classList.add('is-completed');
-            }
-            if(scheduleData.targetPathStepIds.has(stepInfo.id)) {
-                wrapper.classList.add('is-target-path');
-            }
+            if (stepInfo.completedCount === stepInfo.partList.length) wrapper.classList.add('is-completed');
+            if(scheduleData.targetPathStepIds.has(stepInfo.id)) wrapper.classList.add('is-target-path');
             
             let countText = '';
-            if(stepInfo.startableCount > 0) {
-               countText = ` (${stepInfo.startableCount} of ${remainingPartsInStep} ready)`;
-            }
+            if(stepInfo.startableCount > 0) countText = ` (${stepInfo.startableCount} of ${remainingPartsInStep} ready)`;
             
             wrapper.innerHTML = `
                 <div class="step-header">
@@ -509,7 +544,6 @@
                 </div>
                 <ul class="parts-checklist">${generatePartListHTML(stepInfo)}</ul>
                 <div class="completion-notices">${generateCompletionNoticesHTML(stepInfo)}</div>`;
-
             return wrapper;
         }
 
@@ -523,15 +557,13 @@
 
             const totalStartable = stepGroup.reduce((sum, s) => sum + s.startableCount, 0);
             const totalRemaining = stepGroup.reduce((sum, s) => sum + (s.partList.length - s.completedCount), 0);
-            
             let countText = ` (${totalStartable} of ${totalRemaining} ready)`;
             
             const masterCheck = `<label class="check-all-label">
                 <input type="checkbox" class="master-checkbox" data-original-step-ids="${allOriginalIds.join(',')}" ${totalStartable === 0 ? 'disabled' : ''}> Check All Ready
             </label>`;
             
-            let partListHTML = '';
-            let noticesHTML = '';
+            let partListHTML = ''; let noticesHTML = '';
             stepGroup.forEach(stepInfo => {
                 partListHTML += generatePartListHTML(stepInfo);
                 noticesHTML += generateCompletionNoticesHTML(stepInfo);
@@ -545,68 +577,62 @@
                 </div>
                 <ul class="parts-checklist">${partListHTML}</ul>
                 <div class="completion-notices">${noticesHTML}</div>`;
-                
             return wrapper;
         }
         
         function generatePartListHTML(stepInfo) {
             return stepInfo.partList.sort().map(partName => {
-                const isCompleted = scheduleData.completedPartsByStepId.get(stepInfo.id)?.has(partName) ?? false;
-                const canStart = !isCompleted && isPartStartable(partName, stepInfo.id);
+                const taskKey = getTaskKey(partName, stepInfo.color);
+                const isCompleted = scheduleData.completedTasks.has(taskKey);
+                const canStart = !isCompleted && isPartStartable(partName, stepInfo.color);
                 let classes = 'part-item';
                 if (isCompleted) classes += ' completed';
                 if (!canStart && !isCompleted) classes += ' waiting';
-
-                return `<li class="${classes}">
-                    <label>
-                        <input type="checkbox" class="part-checkbox" data-step-id="${stepInfo.id}" data-part-name="${sanitizeHTML(partName)}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
-                        ${sanitizeHTML(partName)}
-                    </label>
-                </li>`;
+                return `<li class="${classes}"><label>
+                        <input type="checkbox" class="part-checkbox" data-part-name="${sanitizeHTML(partName)}" data-color="${sanitizeHTML(stepInfo.color)}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
+                        ${sanitizeHTML(partName)}</label></li>`;
             }).join('');
         }
         
         function generateCompletionNoticesHTML(stepInfo) {
             let html = '';
-            const partsThatWillBeCompleted = stepInfo.completedParts.filter(p => !scheduleData.completedPartsByStepId.get(stepInfo.id)?.has(p));
-            const partsAlreadyCompletedOnFinalStep = stepInfo.completedParts.filter(p => scheduleData.completedPartsByStepId.get(stepInfo.id)?.has(p));
-            if (partsThatWillBeCompleted.length > 0) {
-                 html += `<div class="completion-notice"><span>🏆</span><div>Will complete: <strong>${partsThatWillBeCompleted.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
-            }
-            if (partsAlreadyCompletedOnFinalStep.length > 0) {
-                html += `<div class="completion-notice"><span>✔️</span><div>Completed: <strong>${partsAlreadyCompletedOnFinalStep.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
-            }
+            const willCompleteParts = [], didCompleteParts = [];
+
+            stepInfo.partList.forEach(partName => {
+                const sequence = scheduleData.partToSequence.get(partName);
+                if (sequence && sequence[sequence.length - 1] === stepInfo.color) {
+                    if (scheduleData.completedTasks.has(getTaskKey(partName, stepInfo.color))) { didCompleteParts.push(partName); } 
+                    else { willCompleteParts.push(partName); }
+                }
+            });
+
+            if (willCompleteParts.length > 0) html += `<div class="completion-notice"><span>🏆</span><div>Will complete: <strong>${willCompleteParts.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
+            if (didCompleteParts.length > 0) html += `<div class="completion-notice"><span>✔️</span><div>Completed: <strong>${didCompleteParts.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
             return html;
         }
 
         function updateScheduleView() {
+            if (scheduleData.steps.length === 0) return;
             outputDiv.innerHTML = '';
             calculateProgress();
 
-            const completedSteps = [], fullyReadySteps = [], partiallyReadySteps = [], waitingSteps = [];
-            scheduleData.steps.forEach(step => {
+            const stepInfos = scheduleData.steps.map(step => {
                 let completedCount = 0, startableCount = 0;
                 step.partList.forEach(partName => {
-                    const isCompleted = scheduleData.completedPartsByStepId.get(step.id)?.has(partName) ?? false;
-                    if(isCompleted) {
-                        completedCount++;
-                    } else if(isPartStartable(partName, step.id)) {
-                        startableCount++;
-                    }
+                    const isCompleted = scheduleData.completedTasks.has(getTaskKey(partName, step.color));
+                    if(isCompleted) completedCount++;
+                    else if(isPartStartable(partName, step.color)) startableCount++;
                 });
-                
-                const stepInfo = { ...step, completedCount, startableCount };
-                const remainingParts = step.partList.length - completedCount;
+                return { ...step, completedCount, startableCount };
+            });
 
-                if (remainingParts === 0) {
-                    completedSteps.push(stepInfo);
-                } else if (startableCount === remainingParts) {
-                    fullyReadySteps.push(stepInfo);
-                } else if (startableCount > 0) {
-                    partiallyReadySteps.push(stepInfo);
-                } else {
-                    waitingSteps.push(stepInfo);
-                }
+            const completedSteps = [], fullyReadySteps = [], partiallyReadySteps = [], waitingSteps = [];
+            stepInfos.forEach(stepInfo => {
+                const remainingParts = stepInfo.partList.length - stepInfo.completedCount;
+                if (remainingParts === 0) completedSteps.push(stepInfo);
+                else if (stepInfo.startableCount === remainingParts) fullyReadySteps.push(stepInfo);
+                else if (stepInfo.startableCount > 0) partiallyReadySteps.push(stepInfo);
+                else waitingSteps.push(stepInfo);
             });
             
             const mergedReadyGroups = new Map();
@@ -615,7 +641,6 @@
                 mergedReadyGroups.get(stepInfo.color).push(stepInfo);
             });
             
-            // Render in order: Completed, Merged Ready, Partial, Waiting
             completedSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
             mergedReadyGroups.forEach(group => outputDiv.appendChild(createMergedStepWrapper(group)));
             partiallyReadySteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
@@ -623,52 +648,65 @@
         }
         
         function calculateProgress() {
-            const { partSequenceStepIds, completedPartsByStepId } = scheduleData;
-            if (partSequenceStepIds.size === 0) {
-                progressPercentageEl.textContent = ''; return;
-            }
+            const { partToSequence, completedTasks } = scheduleData;
+            if (!partToSequence || partToSequence.size === 0) { progressPercentageEl.textContent = ''; return;}
+            
             let fullyCompletedPartsCount = 0;
-            partSequenceStepIds.forEach((stepIds, partName) => {
-                const isPartFullyComplete = stepIds.every(id => completedPartsByStepId.get(id)?.has(partName));
-                if (isPartFullyComplete) fullyCompletedPartsCount++;
+            partToSequence.forEach((sequence, partName) => {
+                if (sequence.every(color => completedTasks.has(getTaskKey(partName, color)))) fullyCompletedPartsCount++;
             });
-            const percentage = Math.round((fullyCompletedPartsCount / partSequenceStepIds.size) * 100);
+            const percentage = Math.round((fullyCompletedPartsCount / partToSequence.size) * 100);
             progressPercentageEl.textContent = `Progress: ${percentage}%`;
         }
 
         function handleOutputChange(e) {
             const target = e.target;
-            
-            function togglePart(stepId, partName, shouldBeChecked) {
-                 if (!scheduleData.completedPartsByStepId.has(stepId)) {
-                    scheduleData.completedPartsByStepId.set(stepId, new Set());
-                }
-                const completedSet = scheduleData.completedPartsByStepId.get(stepId);
-                if (shouldBeChecked) completedSet.add(partName); else completedSet.delete(partName);
+            function toggleTask(partName, color, shouldBeChecked) {
+                const taskKey = getTaskKey(partName, color);
+                if (shouldBeChecked) scheduleData.completedTasks.add(taskKey); else scheduleData.completedTasks.delete(taskKey);
             }
 
             if (target.matches('.part-checkbox')) {
-                togglePart(parseInt(target.dataset.stepId), target.dataset.partName, target.checked);
-                updateScheduleView();
+                toggleTask(target.dataset.partName, target.dataset.color, target.checked);
             } else if (target.matches('.master-checkbox')) {
                 const isChecking = target.checked;
                 const stepIds = (target.dataset.originalStepIds || target.dataset.stepId).split(',').map(Number);
-
                 stepIds.forEach(stepId => {
                     const step = scheduleData.steps.find(s => s.id === stepId);
                     if (!step) return;
                     step.partList.forEach(partName => {
-                        if (!scheduleData.completedPartsByStepId.get(stepId)?.has(partName) && isPartStartable(partName, stepId)) {
-                            togglePart(stepId, partName, isChecking);
+                        if (!scheduleData.completedTasks.has(getTaskKey(partName, step.color)) && isPartStartable(partName, step.color)) {
+                            toggleTask(partName, step.color, isChecking);
                         }
                     });
                 });
-                updateScheduleView();
-            }
+            } else { return; }
+            
+            saveProgressToLocalStorage();
+            updateScheduleView();
         }
 
-        function saveStateToHash() {
-            const stateToSave = { title: titleInput.value.trim(), paints: state.paints, parts: state.parts };
+        function autoSaveProjectState() {
+            if (!state.projectId) return;
+            const key = `paintSequencerProject_${state.projectId}`;
+            try { localStorage.setItem(key, JSON.stringify(state)); } 
+            catch (e) { console.error("Could not auto-save project state:", e); }
+        }
+
+        function saveProgressToLocalStorage() {
+            if (!state.projectId) return;
+            const key = `paintSequencerProgress_${state.projectId}`;
+            try { localStorage.setItem(key, JSON.stringify(Array.from(scheduleData.completedTasks))); } 
+            catch (e) { console.error("Could not save progress:", e); }
+        }
+        
+        function clearAutoSavedProjectState() {
+            if (!state.projectId) return;
+            localStorage.removeItem(`paintSequencerProject_${state.projectId}`);
+        }
+
+        function saveStateToURL() {
+            const stateToSave = { ...state };
             const jsonState = JSON.stringify(stateToSave);
             const base64State = btoa(unescape(encodeURIComponent(jsonState)));
             window.location.hash = base64State;
@@ -678,28 +716,77 @@
                 saveFeedback.style.opacity = '1';
                 setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
             });
-            document.getElementById('save-btn').classList.remove('unsaved');
+            clearAutoSavedProjectState();
+            markAsSaved();
         }
 
-        function loadStateFromHash() {
-            if (!window.location.hash) return false;
+        function decodeStateFromURL() {
+            if (!window.location.hash) return null;
             try {
                 const jsonState = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
-                const loadedState = JSON.parse(jsonState);
+                let loadedState = JSON.parse(jsonState);
+
                 if (loadedState && loadedState.paints && loadedState.parts) {
-                    state = { ...loadedState, stampMode: { isActive: false, color: null } };
-                    nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1;
-                    return true;
+                    if (loadedState.paints.length > 0 && typeof loadedState.paints[0] === 'string') {
+                        let currentPaintId = 0;
+                        loadedState.paints = loadedState.paints.map(pName => ({ id: currentPaintId++, name: pName }));
+                    }
+                    if (!loadedState.projectId) loadedState.projectId = generateId();
+                    return loadedState;
                 }
             } catch (e) {
-                console.error("Failed to load state from hash:", e);
-                alert("Could not load project. The link may be corrupted.");
+                console.error("Failed to load state from URL hash:", e);
+                alert("Could not load project from link. The link may be corrupted.");
             }
-            return false;
+            return null;
         }
 
-        function _resetSchedule() {
-            scheduleData = { steps: [], completedPartsByStepId: new Map(), partSequenceStepIds: new Map(), currentTargetPartName: null, targetPathStepIds: new Set() };
+        function loadAutoSavedProjectState(projectId) {
+            if (!projectId) return null;
+            const key = `paintSequencerProject_${projectId}`;
+            const savedData = localStorage.getItem(key);
+            if (savedData) {
+                try { return JSON.parse(savedData); }
+                catch (e) { console.error("Failed to parse auto-saved project state:", e); return null; }
+            }
+            return null;
+        }
+        
+        function loadProgressFromLocalStorage(projectId) {
+            scheduleData.completedTasks = new Set();
+            if (!projectId) return;
+            const key = `paintSequencerProgress_${projectId}`;
+            const savedData = localStorage.getItem(key);
+            if (savedData) {
+                try { scheduleData.completedTasks = new Set(JSON.parse(savedData)); } 
+                catch(e) { console.error("Failed to parse progress from localStorage:", e); }
+            }
+        }
+
+        function handleRevert() {
+            if (confirm("Discard all unsaved changes and revert to the last saved version of this project?")) {
+                clearAutoSavedProjectState();
+                window.location.reload();
+            }
+        }
+
+        function handleResetProgress() {
+            if (confirm("Are you sure you want to reset all progress for this project? All checkboxes will be cleared.")) {
+                scheduleData.completedTasks.clear();
+                saveProgressToLocalStorage();
+                updateScheduleView();
+            }
+        }
+
+        function _resetSchedule(clearProgress = true) {
+            scheduleData.steps = [];
+            scheduleData.partToSequence = new Map();
+            scheduleData.currentTargetPartName = null;
+            scheduleData.targetPathStepIds = new Set();
+            if (clearProgress && state.projectId) {
+                scheduleData.completedTasks = new Set();
+                saveProgressToLocalStorage();
+            }
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
             progressPercentageEl.textContent = '';
             targetPartSelect.innerHTML = '';
@@ -707,19 +794,28 @@
         }
 
         function _performReset() {
-            state = { title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
-            nextPartId = 0;
-            _resetSchedule();
+            if(state.projectId) {
+                localStorage.removeItem(`paintSequencerProgress_${state.projectId}`);
+                localStorage.removeItem(`paintSequencerProject_${state.projectId}`);
+            }
+            state = { projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
+            nextPartId = 0; nextPaintId = 0;
+            _resetSchedule(true);
             history.pushState("", document.title, window.location.pathname + window.location.search);
             exitStampMode();
+            markAsSaved();
         }
 
-        function handleReset() { if (confirm('Reset everything? This will clear all data.')) { _performReset(); renderAll(); } }
+        function handleReset() { if (confirm('Reset everything? This will clear all data, including auto-saves and progress for this project.')) { _performReset(); renderAll(); } }
         
         function loadInitialData() {
             _performReset();
             state.title = 'HG Gundam "Paint-by-Numbers"';
-            state.paints.push('Primer', 'Frame Gray', 'Armor White', 'Gundam Blue', 'Fin Red', 'V-Fin Yellow', 'Gloss Clearcoat');
+            state.paints = [
+                {id: nextPaintId++, name: 'Primer'}, {id: nextPaintId++, name: 'Frame Gray'}, {id: nextPaintId++, name: 'Armor White'}, 
+                {id: nextPaintId++, name: 'Gundam Blue'}, {id: nextPaintId++, name: 'Fin Red'}, {id: nextPaintId++, name: 'V-Fin Yellow'}, 
+                {id: nextPaintId++, name: 'Gloss Clearcoat'}
+            ];
             state.parts.push(
                 { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['Primer', 'Gundam Blue', 'Armor White', 'Gloss Clearcoat'] },
                 { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Gundam Blue', 'Gloss Clearcoat']},
@@ -727,25 +823,54 @@
                 { id: nextPartId++, name: 'D-1 (Shield)', sequence: ['Primer', 'Fin Red', 'Armor White', 'Gloss Clearcoat'] },
                 { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['Primer', 'V-Fin Yellow', 'Gloss Clearcoat'] }
             );
+            markAsUnsavedAndAutoSave();
             renderAll();
-            markAsUnsaved();
         }
+        
+        function initializeApp() {
+            const getDefaultState = () => ({ projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
+            state = getDefaultState();
+            
+            let stateFromURL = decodeStateFromURL();
+            let projectId = stateFromURL ? stateFromURL.projectId : null;
+            let autoSavedState = projectId ? loadAutoSavedProjectState(projectId) : null;
+            
+            if (autoSavedState) {
+                state = { ...getDefaultState(), ...autoSavedState };
+                markAsUnsavedAndAutoSave();
+            } else if (stateFromURL) {
+                state = { ...getDefaultState(), ...stateFromURL };
+                markAsSaved();
+            } else {
+                loadInitialData(); // This calls _performReset and sets up the example
+                return; // Exit early since loadInitialData handles rendering.
+            }
 
+            nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1;
+            nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1;
+            
+            loadProgressFromLocalStorage(state.projectId);
+            renderAll();
+            generateOptimalOrder();
+        }
+        
         // EVENT LISTENERS
         addPaintBtn.addEventListener('click', handleAddPaint);
         paintInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPaint());
         paintList.addEventListener('click', handlePaintListClick);
         paintList.addEventListener('blur', (e) => handleNameEdit(e, 'paint'), true);
-        paintList.addEventListener('keydown', (e) => handleNameEdit(e, 'paint'));
+        paintList.addEventListener('keydown', (e) => handleNameEdit(e, 'paint'), true);
         addPartBtn.addEventListener('click', handleAddPart);
         partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart());
         partList.addEventListener('click', handlePartListClick);
         partList.addEventListener('blur', (e) => handleNameEdit(e, 'part'), true);
-        partList.addEventListener('keydown', (e) => handleNameEdit(e, 'part'));
+        partList.addEventListener('keydown', (e) => handleNameEdit(e, 'part'), true);
         partSequenceContainer.addEventListener('click', handleSequenceInteraction);
         titleInput.addEventListener('input', handleTitleChange);
-        saveBtn.addEventListener('click', saveStateToHash);
+        saveBtn.addEventListener('click', saveStateToURL);
+        revertBtn.addEventListener('click', handleRevert);
         generateBtn.addEventListener('click', generateOptimalOrder);
+        resetProgressBtn.addEventListener('click', handleResetProgress);
         resetBtn.addEventListener('click', handleReset);
         stampToolBtn.addEventListener('click', enterStampMode);
         exitStampBtn.addEventListener('click', exitStampMode);
@@ -758,8 +883,7 @@
         });
         
         // INITIALIZATION
-        if (!loadStateFromHash()) loadInitialData();
-        else { document.title = state.title + " - Paint Sequencer"; renderAll(); }
+        initializeApp();
     });
     </script>
 </body>
