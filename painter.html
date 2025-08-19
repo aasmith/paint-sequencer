@@ -27,7 +27,7 @@
         .card-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .card-header h2 { border: none; padding: 0; margin: 0; }
         .card-header .legend { color: var(--text-secondary-color); font-size: 0.9em; white-space: nowrap; }
-        .header-controls { display: contents; } /* Allows items to flow with flexbox */
+        .header-controls { display: contents; }
         #progress-percentage { font-weight: 600; color: var(--primary-color); margin-left: auto; padding: 0 10px;}
         #target-part-select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.9em; }
         h1 { font-size: 1.8rem; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;}
@@ -64,7 +64,6 @@
         .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
         #stamp-tool-btn { background-color: var(--warning-color); color: var(--text-color); }
         #stamp-tool-btn:hover { background-color: var(--warning-hover-color); }
-
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
         .step-wrapper { padding: 10px 0; border-bottom: 1px solid var(--border-color); transition: background-color 0.3s, border 0.3s; }
         .step-wrapper:last-child { border-bottom: none; }
@@ -89,10 +88,9 @@
         .completion-notices { padding-left: 48px; }
         .completion-notice { display: flex; align-items: flex-start; color: var(--text-secondary-color); font-size: 0.9em; }
         .completion-notice span { line-height: 1.4; padding-right: 5px; }
-
         #output-section.invalidated #output { opacity: 0.4; }
         #output-section.invalidated::after { content: 'Schedule outdated. Please regenerate.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 100, 0.85); border: 1px solid #e0e060; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-align: center; }
-        .main-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .main-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 15px; }
         #save-feedback { color: var(--secondary-color); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
         #stamp-tool-toolbar { display: none; background-color: var(--bg-color); padding: 15px; border-radius: 6px; margin-bottom: 20px; align-items: center; gap: 15px; border: 1px solid var(--border-color); }
         .stamp-mode-active #stamp-tool-toolbar { display: flex; }
@@ -103,6 +101,24 @@
         .drop-target:hover::before { color: var(--warning-color); }
         .drop-target.large { width: 50px; height: 32px; }
         .drop-target.small { width: 20px; height: 32px; }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10; display: none; }
+        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--surface-color); border-radius: 8px; z-index: 20; width: 90%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; }
+        .modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { margin: 0; }
+        .modal-close { font-size: 24px; font-weight: bold; background: none; border: none; cursor: pointer; padding: 0 5px; color: var(--text-color); }
+        .modal-content { padding: 20px; overflow-y: auto; }
+        .modal-tabs { display: flex; border-bottom: 1px solid var(--border-color); }
+        .modal-tab { padding: 10px 15px; cursor: pointer; border: none; background: none; font-size: 1rem; border-bottom: 3px solid transparent; color: var(--text-color); } /* FIX: Explicit color set */
+        .modal-tab.active { border-bottom-color: var(--primary-color); font-weight: 600; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .tab-pane h4 { margin-top: 0; }
+        .tab-pane textarea, .tab-pane pre { width: 100%; min-height: 200px; max-height: 40vh; font-family: monospace; font-size: 0.9rem; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; }
+        .tab-pane pre { background-color: var(--bg-color); white-space: pre-wrap; word-wrap: break-word; overflow: auto; } /* FIX: Added overflow control */
+        .modal-footer { margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }
+        #json-status { margin-top: 10px; font-weight: bold; }
+        #json-status.error { color: var(--danger-color); }
         
         @media (max-width: 900px) {
             .setup-container { grid-template-columns: 1fr; }
@@ -157,6 +173,7 @@
             <div class="main-controls">
                 <button id="save-btn" class="btn-save">💾 Save & Copy Link</button>
                 <button id="revert-btn" class="btn-danger" style="display: none;">↩️ Revert Changes</button>
+                <button id="import-export-btn">📤 Import / Export</button>
                 <button id="generate-btn">✨ Generate Optimal Order</button>
                 <button id="reset-progress-btn" class="btn-warning">🔄 Reset Progress</button>
                 <button id="reset-btn" class="btn-danger">💣 Reset All</button>
@@ -176,26 +193,64 @@
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
         </div>
     </div>
+    
+    <div class="modal-overlay" id="json-modal-overlay">
+        <div class="modal" id="json-modal">
+            <div class="modal-header">
+                <h3>Import / Export Project JSON</h3>
+                <button class="modal-close" id="json-modal-close-btn">×</button>
+            </div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="export">Export Project</button>
+                <button class="modal-tab" data-tab="import">Import Project</button>
+                <button class="modal-tab" data-tab="schema">JSON Schema</button>
+            </div>
+            <div class="modal-content">
+                <div class="tab-pane active" id="tab-export">
+                    <h4>Current Project JSON</h4>
+                    <p>Copy this text to save your project definition to a file.</p>
+                    <textarea id="json-export-area" readonly></textarea>
+                    <div class="modal-footer">
+                        <button id="copy-json-btn">Copy to Clipboard</button>
+                    </div>
+                </div>
+                <div class="tab-pane" id="tab-import">
+                    <h4>Import from Text</h4>
+                    <textarea id="json-import-area" placeholder="Paste your project JSON here..."></textarea>
+                    <h4>Import from URL</h4>
+                    <div class="input-group">
+                        <input type="url" id="json-import-url" placeholder="https://.../project.json">
+                     </div>
+                     <div id="json-status"></div>
+                    <div class="modal-footer">
+                        <button id="import-json-btn" class="btn-add">Load Project</button>
+                    </div>
+                </div>
+                <div class="tab-pane" id="tab-schema">
+                    <h4>Project File Schema</h4>
+                    <p>Your JSON file should conform to this structure.</p>
+                    <pre id="json-schema-area"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         let state = { projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
+        let paintIdMap = new Map();
         let nextPartId = 0;
         let nextPaintId = 0;
         let scheduleData = { steps: [], partToSequence: new Map(), completedTasks: new Set(), currentTargetPartName: null, targetPathStepIds: new Set() };
         
+        // Element caching
         const saveBtn = document.getElementById('save-btn');
         const revertBtn = document.getElementById('revert-btn');
         const generateBtn = document.getElementById('generate-btn');
         const resetProgressBtn = document.getElementById('reset-progress-btn');
         const resetBtn = document.getElementById('reset-btn');
-        const stampToolBtn = document.getElementById('stamp-tool-btn');
-        const exitStampBtn = document.getElementById('exit-stamp-btn');
-        const addPaintBtn = document.getElementById('add-paint-btn');
-        const addPartBtn = document.getElementById('add-part-btn');
+        const importExportBtn = document.getElementById('import-export-btn');
         const titleInput = document.getElementById('title-input');
-        const paintInput = document.getElementById('paint-input');
-        const partInput = document.getElementById('part-input');
         const paintList = document.getElementById('paint-list');
         const partList = document.getElementById('part-list');
         const partSequenceContainer = document.getElementById('part-sequence-container');
@@ -203,13 +258,22 @@
         const outputSection = document.getElementById('output-section');
         const progressPercentageEl = document.getElementById('progress-percentage');
         const targetPartSelect = document.getElementById('target-part-select');
-        const stampColorSelect = document.getElementById('stamp-color-select');
+        const stampToolBtn = document.getElementById('stamp-tool-btn');
+        const jsonModalOverlay = document.getElementById('json-modal-overlay');
+        const jsonModal = document.getElementById('json-modal');
+        const jsonModalCloseBtn = document.getElementById('json-modal-close-btn');
         
         const sanitizeHTML = str => String(str).replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
         const generateId = () => Math.random().toString(36).substring(2, 9);
-        const getTaskKey = (partName, color, index) => `${partName}__${color}__${index}`;
+        const getTaskKey = (partName, colorName, index) => `${partName}__${colorName}__${index}`;
 
-        const renderAll = () => { renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
+        function updatePaintIdMap() {
+            paintIdMap.clear();
+            state.paints.forEach(paint => paintIdMap.set(paint.id, paint.name));
+        }
+        const getPaintNameById = (id) => paintIdMap.get(id) || 'Unknown Paint';
+        
+        const renderAll = () => { updatePaintIdMap();renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
         const renderTitle = () => { titleInput.value = state.title; };
         
         const renderPaintList = () => {
@@ -227,27 +291,30 @@
             }
             const isStamping = state.stampMode.isActive;
             sequenceCard.classList.toggle('stamp-mode-active', isStamping);
+
             state.parts.forEach(part => {
                 const row = document.createElement('div');
                 row.className = 'part-sequence-row';
                 row.dataset.partId = part.id;
                 let sequenceItems = [];
+                const paintNameSequence = part.sequence.map(getPaintNameById);
+
                 if (isStamping) {
                     sequenceItems.push(`<div class="drop-target large" data-insert-index="0"></div>`);
-                    part.sequence.forEach((color, index) => {
-                        sequenceItems.push(`<div class="paint-step"><span>${sanitizeHTML(color)}</span></div>`);
+                    paintNameSequence.forEach((colorName, index) => {
+                        sequenceItems.push(`<div class="paint-step"><span>${sanitizeHTML(colorName)}</span></div>`);
                         sequenceItems.push(`<div class="drop-target small" data-insert-index="${index + 1}"></div>`);
                     });
                 } else {
-                    sequenceItems = part.sequence.map((color, index) => `
+                    sequenceItems = paintNameSequence.map((colorName, index) => `
                         <div class="paint-step">
                             <button class="reorder-btn" data-dir="left" data-index="${index}" title="Move Left">←</button>
-                            <span>${sanitizeHTML(color)}</span>
+                            <span>${sanitizeHTML(colorName)}</span>
                             <button class="reorder-btn" data-dir="right" data-index="${index}" title="Move Right">→</button>
                             <span class="remove-step-btn" data-index="${index}" title="Remove step">×</span>
                         </div>`);
                 }
-                let selectOptions = state.paints.map(p => `<option value="${sanitizeHTML(p.name)}">${sanitizeHTML(p.name)}</option>`).join('') || '<option disabled>Add paints first</option>';
+                let selectOptions = state.paints.map(p => `<option value="${p.id}">${sanitizeHTML(p.name)}</option>`).join('') || '<option disabled>Add paints first</option>';
                 row.innerHTML = `
                     <div class="part-name-label">${sanitizeHTML(part.name)}</div>
                     <div class="sequence-steps">${sequenceItems.join('')}</div>
@@ -256,38 +323,28 @@
             });
         }
         
-        function markAsUnsavedAndAutoSave() {
-            saveBtn.classList.add('unsaved');
-            revertBtn.style.display = 'inline-block';
-            autoSaveProjectState();
-        }
-
-        function markAsSaved() {
-            saveBtn.classList.remove('unsaved');
-            revertBtn.style.display = 'none';
-        }
-
+        function markAsUnsavedAndAutoSave() { saveBtn.classList.add('unsaved'); revertBtn.style.display = 'inline-block'; autoSaveProjectState(); }
+        function markAsSaved() { saveBtn.classList.remove('unsaved'); revertBtn.style.display = 'none'; }
         function invalidateSchedule() { if (scheduleData.steps.length > 0) outputSection.classList.add('invalidated'); }
 
         function enterStampMode() {
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
             state.stampMode.isActive = true;
-            stampToolBtn.style.display = 'none';
+            document.getElementById('stamp-tool-btn').style.display = 'none';
             document.getElementById('stamp-tool-toolbar').style.display = 'flex';
-            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${sanitizeHTML(p.name)}">${sanitizeHTML(p.name)}</option>`).join('');
-            state.stampMode.color = stampColorSelect.value;
+            const stampColorSelect = document.getElementById('stamp-color-select');
+            stampColorSelect.innerHTML = state.paints.map(p => `<option value="${p.id}">${sanitizeHTML(p.name)}</option>`).join('');
+            state.stampMode.color = parseInt(stampColorSelect.value);
             renderAll();
         }
 
-        function exitStampMode() { state.stampMode.isActive = false; stampToolBtn.style.display = 'block'; document.getElementById('stamp-tool-toolbar').style.display = 'none'; renderAll(); }
-        function handleStampColorChange() { state.stampMode.color = stampColorSelect.value; }
+        function exitStampMode() { state.stampMode.isActive = false; document.getElementById('stamp-tool-btn').style.display = 'block'; document.getElementById('stamp-tool-toolbar').style.display = 'none'; renderAll(); }
+        function handleStampColorChange(e) { state.stampMode.color = parseInt(e.target.value); }
         
-        function handleTitleChange() { 
-            state.title = titleInput.value; 
-            markAsUnsavedAndAutoSave();
-        }
+        function handleTitleChange() { state.title = titleInput.value; markAsUnsavedAndAutoSave(); }
         
-        function handleAddItems(inputEl, collection, createItem, nameProp = 'name') {
+        function handleAddItems(inputElId, collection, createItem, nameProp = 'name') {
+            const inputEl = document.getElementById(inputElId);
             const values = inputEl.value.split(',').map(v => v.trim()).filter(Boolean);
             if (values.length === 0) return;
             values.forEach(value => { 
@@ -300,24 +357,25 @@
             renderAll();
         }
 
-        function handleAddPaint() { handleAddItems(paintInput, state.paints, value => ({ id: nextPaintId++, name: value }), 'name'); }
-        function handleAddPart() { handleAddItems(partInput, state.parts, value => ({ id: nextPartId++, name: value, sequence: [] }), 'name'); }
+        function handleAddPaint() { handleAddItems('paint-input', state.paints, value => ({ id: nextPaintId++, name: value }), 'name'); }
+        function handleAddPart() { handleAddItems('part-input', state.parts, value => ({ id: nextPartId++, name: value, sequence: [] }), 'name'); }
         
         function handlePaintListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
-            const paintId = parseInt(e.target.dataset.paintId);
-            const paintToRemove = state.paints.find(p => p.id === paintId);
+            const paintIdToRemove = parseInt(e.target.dataset.paintId);
+            const paintToRemove = state.paints.find(p => p.id === paintIdToRemove);
             if (!paintToRemove) return;
 
-            if (state.parts.some(p => p.sequence.includes(paintToRemove.name))) {
+            if (state.parts.some(p => p.sequence.includes(paintIdToRemove))) {
                 if (!confirm(`Warning: This will remove "${paintToRemove.name}" from all part sequences. Proceed?`)) return;
-                state.parts.forEach(part => { part.sequence = part.sequence.filter(color => color !== paintToRemove.name); });
+                state.parts.forEach(part => { part.sequence = part.sequence.filter(pid => pid !== paintIdToRemove); });
             }
-            state.paints = state.paints.filter(p => p.id !== paintId);
+            state.paints = state.paints.filter(p => p.id !== paintIdToRemove);
             invalidateSchedule(); 
             markAsUnsavedAndAutoSave(); 
             renderAll();
         }
+
         function handlePartListClick(e) {
             if (!e.target.matches('.remove-btn')) return;
             const partId = parseInt(e.target.dataset.partId);
@@ -335,20 +393,20 @@
             const saveEdit = () => {
                 const newValue = target.textContent.trim();
                 let oldValue;
-                let isDuplicate = false;
+                let isDuplicate = false; let idToUpdate;
 
                 if (listType === 'paint') {
-                    const paintId = parseInt(target.closest('li').dataset.paintId);
-                    const paint = state.paints.find(p => p.id === paintId);
+                    idToUpdate = parseInt(target.closest('li').dataset.paintId);
+                    const paint = state.paints.find(p => p.id === idToUpdate);
                     if (!paint) return;
                     oldValue = paint.name;
-                    isDuplicate = state.paints.some(p => p.name === newValue && p.id !== paintId);
+                    isDuplicate = state.paints.some(p => p.name === newValue && p.id !== idToUpdate);
                 } else { // part
-                    const partId = parseInt(target.dataset.partId);
-                    const part = state.parts.find(p => p.id === partId);
+                    idToUpdate = parseInt(target.dataset.partId);
+                    const part = state.parts.find(p => p.id === idToUpdate);
                     if (!part) return;
                     oldValue = part.name;
-                    isDuplicate = state.parts.some(p => p.name === newValue && p.id !== partId);
+                    isDuplicate = state.parts.some(p => p.name === newValue && p.id !== idToUpdate);
                 }
                 
                 if (newValue === oldValue) return;
@@ -366,12 +424,11 @@
                 saveProgressToLocalStorage();
 
                 if (listType === 'paint') {
-                    const paint = state.paints.find(p => p.name === oldValue);
+                    const paint = state.paints.find(p => p.id === idToUpdate);
                     if (paint) paint.name = newValue;
-                    state.parts.forEach(p => { p.sequence = p.sequence.map(c => c === oldValue ? newValue : c); });
                     scheduleData.steps.forEach(s => { if(s.color === oldValue) s.color = newValue; });
                 } else { // part
-                    const part = state.parts.find(p => p.name === oldValue);
+                    const part = state.parts.find(p => p.id === idToUpdate);
                     if (part) part.name = newValue;
                     scheduleData.steps.forEach(s => { 
                         s.partList = s.partList.map(p => p.name === oldValue ? { ...p, name: newValue } : p);
@@ -385,12 +442,10 @@
                 updateScheduleView();
             };
 
-            if (e.type === 'keydown') {
-                if(e.key === 'Enter') { e.preventDefault(); target.blur(); } 
-                else if (e.key === 'Escape') {
-                    target.textContent = target.dataset.originalName;
-                    target.blur();
-                }
+            if (e.type === 'keydown' && (e.key === 'Enter' || e.key === 'Escape')) {
+                e.preventDefault();
+                target.blur();
+                if (e.key === 'Escape') target.textContent = target.dataset.originalName;
             } else if (e.type === 'blur') {
                 saveEdit();
             }
@@ -409,7 +464,7 @@
             let stateChanged = false;
             if (e.target.matches('.add-step-btn')) {
                 const select = partRow.querySelector('select');
-                if (select.value) { part.sequence.push(select.value); stateChanged = true; }
+                if (select.value) { part.sequence.push(parseInt(select.value)); stateChanged = true; }
             } else if (e.target.matches('.remove-step-btn')) {
                 part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true;
             } else if (e.target.matches('.reorder-btn')) {
@@ -421,10 +476,10 @@
         }
 
         function generateOptimalOrder() {
-            if (state.parts.filter(p => p.sequence.length === 0).length > 0) {
+            if (state.parts.some(p => p.sequence.length === 0)) {
                 if (!confirm(`Warning: Some parts have no paint sequence and will be ignored. Continue?`)) return;
             }
-            _resetSchedule(false); // Keep progress but clear old schedule
+            _resetSchedule(false);
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
             if (partsToProcess.length === 0) {
@@ -434,15 +489,15 @@
             let stepIdCounter = 0;
             while (partsToProcess.some(p => p.currentStep < p.sequence.length)) {
                 const readyPartsByColor = new Map();
-                partsToProcess.filter(p=>p.currentStep < p.sequence.length).forEach(part => {
-                    const nextColor = part.sequence[part.currentStep];
-                    if (!readyPartsByColor.has(nextColor)) readyPartsByColor.set(nextColor, []);
-                    readyPartsByColor.get(nextColor).push(part);
+                partsToProcess.filter(p => p.currentStep < p.sequence.length).forEach(part => {
+                    const nextPaintId = part.sequence[part.currentStep];
+                    if (!readyPartsByColor.has(nextPaintId)) readyPartsByColor.set(nextPaintId, []);
+                    readyPartsByColor.get(nextPaintId).push(part);
                 });
                 
                 let priorityChoices = [], lastStepChoices = [];
-                for (const [color, partList] of readyPartsByColor.entries()) {
-                    (partList.some(p => p.currentStep < p.sequence.length - 1) ? priorityChoices : lastStepChoices).push({ color, partList, count: partList.length });
+                for (const [paintId, partList] of readyPartsByColor.entries()) {
+                    (partList.some(p => p.currentStep < p.sequence.length - 1) ? priorityChoices : lastStepChoices).push({ paintId, partList, count: partList.length });
                 }
                 const choices = priorityChoices.length > 0 ? priorityChoices : lastStepChoices;
                 choices.sort((a, b) => b.count - a.count);
@@ -450,12 +505,13 @@
                 
                 const bestChoice = choices[0];
                 const stepId = stepIdCounter++;
+                const colorName = getPaintNameById(bestChoice.paintId);
                 const stepParts = bestChoice.partList.map(p => ({ name: p.name, index: p.currentStep }));
-                scheduleData.steps.push({ id: stepId, color: bestChoice.color, partList: stepParts });
+                scheduleData.steps.push({ id: stepId, color: colorName, partList: stepParts });
                 bestChoice.partList.forEach(part => { part.currentStep++; });
             }
-
-            state.parts.forEach(part => { scheduleData.partToSequence.set(part.name, part.sequence); });
+            
+            state.parts.forEach(part => { scheduleData.partToSequence.set(part.name, part.sequence.map(getPaintNameById)); });
             outputSection.classList.remove('invalidated');
             renderTargetPartSelector();
             updateScheduleView();
@@ -464,9 +520,7 @@
         function renderTargetPartSelector() {
             targetPartSelect.innerHTML = '<option value="">Default (No Target)</option>';
             const sortedPartNames = Array.from(scheduleData.partToSequence.keys()).sort();
-            sortedPartNames.forEach(name => {
-                targetPartSelect.innerHTML += `<option value="${sanitizeHTML(name)}">${sanitizeHTML(name)}</option>`;
-            });
+            sortedPartNames.forEach(name => { targetPartSelect.innerHTML += `<option value="${sanitizeHTML(name)}">${sanitizeHTML(name)}</option>`; });
             targetPartSelect.value = scheduleData.currentTargetPartName || "";
         }
         
@@ -486,14 +540,10 @@
                 const index = parseInt(indexStr);
                 const sequence = partToSequence.get(partName);
                 if(!sequence || index === 0) continue;
-
                 const prereqIndex = index - 1;
                 const prereqColor = sequence[prereqIndex];
                 const prereqTaskKey = getTaskKey(partName, prereqColor, prereqIndex);
-                if (!requiredTasks.has(prereqTaskKey)) {
-                    requiredTasks.add(prereqTaskKey);
-                    toProcess.push(prereqTaskKey);
-                }
+                if (!requiredTasks.has(prereqTaskKey)) { requiredTasks.add(prereqTaskKey); toProcess.push(prereqTaskKey); }
             }
 
             steps.forEach(step => {
@@ -519,30 +569,22 @@
         function createStepWrapper(stepInfo) {
             const wrapper = document.createElement('div');
             wrapper.className = 'step-wrapper';
-
             let indicatorIcon, indicatorTitle, indicatorClass;
-            const remainingPartsInStep = stepInfo.partList.length - stepInfo.completedCount;
+            const remaining = stepInfo.partList.length - stepInfo.completedCount;
 
-            if (remainingPartsInStep === 0) {
-                indicatorIcon = '✔️';
-                indicatorTitle = 'Step completed.';
-                indicatorClass = 'success';
+            if (remaining === 0) {
+                indicatorIcon = '✔️'; indicatorTitle = 'Step completed.'; indicatorClass = 'success';
                 wrapper.classList.add('is-completed');
+            } else if (stepInfo.startableCount === remaining) {
+                indicatorIcon = '⭐'; indicatorTitle = 'All remaining parts are ready.'; indicatorClass = 'full';
+            } else if (stepInfo.startableCount > 0) {
+                indicatorIcon = '▶️'; indicatorTitle = 'Some parts are ready.'; indicatorClass = 'partial';
             } else {
-                if (stepInfo.startableCount === remainingPartsInStep) {
-                    indicatorIcon = '⭐'; indicatorTitle = 'All remaining parts are ready.'; indicatorClass = 'full';
-                } else if (stepInfo.startableCount > 0) {
-                    indicatorIcon = '▶️'; indicatorTitle = 'Some parts are ready.'; indicatorClass = 'partial';
-                } else {
-                    indicatorIcon = '🛑'; indicatorTitle = 'No parts are ready yet.'; indicatorClass = 'stop';
-                }
+                indicatorIcon = '🛑'; indicatorTitle = 'No parts are ready yet.'; indicatorClass = 'stop';
             }
-
             if(scheduleData.targetPathStepIds.has(stepInfo.id)) wrapper.classList.add('is-target-path');
             
-            let countText = '';
-            if(stepInfo.startableCount > 0 && remainingPartsInStep > 0) countText = ` (${stepInfo.startableCount} of ${remainingPartsInStep} ready)`;
-            
+            let countText = (stepInfo.startableCount > 0 && remaining > 0) ? ` (${stepInfo.startableCount} of ${remaining} ready)` : '';
             wrapper.innerHTML = `
                 <div class="step-header">
                     <span class="start-indicator ${indicatorClass}" title="${sanitizeHTML(indicatorTitle)}">${indicatorIcon}</span>
@@ -559,24 +601,15 @@
         function createMergedStepWrapper(stepGroup) {
             const wrapper = document.createElement('div');
             wrapper.className = 'step-wrapper';
-            
             const allOriginalIds = stepGroup.map(s => s.id);
-            const isTargetPath = allOriginalIds.some(id => scheduleData.targetPathStepIds.has(id));
-            if(isTargetPath) wrapper.classList.add('is-target-path');
-
+            if(allOriginalIds.some(id => scheduleData.targetPathStepIds.has(id))) wrapper.classList.add('is-target-path');
             const totalStartable = stepGroup.reduce((sum, s) => sum + s.startableCount, 0);
             const totalRemaining = stepGroup.reduce((sum, s) => sum + (s.partList.length - s.completedCount), 0);
             let countText = ` (${totalStartable} of ${totalRemaining} ready)`;
             
-            const masterCheck = `<label class="check-all-label">
-                <input type="checkbox" class="master-checkbox" data-original-step-ids="${allOriginalIds.join(',')}" ${totalStartable === 0 ? 'disabled' : ''}> Check All Ready
-            </label>`;
-            
-            let partListHTML = '', noticesHTML = '';
-            stepGroup.forEach(stepInfo => {
-                partListHTML += generatePartListHTML(stepInfo);
-                noticesHTML += generateCompletionNoticesHTML(stepInfo);
-            });
+            const masterCheck = `<label class="check-all-label"><input type="checkbox" class="master-checkbox" data-original-step-ids="${allOriginalIds.join(',')}" ${totalStartable === 0 ? 'disabled' : ''}> Check All Ready</label>`;
+            let partListHTML = stepGroup.map(generatePartListHTML).join('');
+            let noticesHTML = stepGroup.map(generateCompletionNoticesHTML).join('');
 
             wrapper.innerHTML = `
                 <div class="step-header">
@@ -599,10 +632,7 @@
                 if (isCompleted) classes += ' completed';
                 if (!canStart && !isCompleted) classes += ' waiting';
                 return `<li class="${classes}"><label>
-                        <input type="checkbox" class="part-checkbox" 
-                            data-part-name="${sanitizeHTML(name)}" 
-                            data-color="${sanitizeHTML(stepInfo.color)}" 
-                            data-index="${index}" 
+                        <input type="checkbox" class="part-checkbox" data-part-name="${sanitizeHTML(name)}" data-color="${sanitizeHTML(stepInfo.color)}" data-index="${index}" 
                             ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
                         ${sanitizeHTML(name)}</label></li>`;
             }).sort((a,b) => a.localeCompare(b)).join('');
@@ -611,7 +641,6 @@
         function generateCompletionNoticesHTML(stepInfo) {
             let html = '';
             const willCompleteParts = [], didCompleteParts = [];
-
             stepInfo.partList.forEach(partInfo => {
                 const { name, index } = partInfo;
                 const sequence = scheduleData.partToSequence.get(name);
@@ -621,7 +650,6 @@
                     else { willCompleteParts.push(name); }
                 }
             });
-
             if (willCompleteParts.length > 0) html += `<div class="completion-notice"><span>🏆</span><div>Will complete: <strong>${willCompleteParts.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
             if (didCompleteParts.length > 0) html += `<div class="completion-notice"><span>✔️</span><div>Completed: <strong>${didCompleteParts.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
             return html;
@@ -643,20 +671,21 @@
             });
 
             const completedSteps = [], fullyReadySteps = [], partiallyReadySteps = [], waitingSteps = [];
-            stepInfos.forEach(stepInfo => {
-                const remainingParts = stepInfo.partList.length - stepInfo.completedCount;
-                if (remainingParts === 0) completedSteps.push(stepInfo);
-                else if (stepInfo.startableCount === remainingParts) fullyReadySteps.push(stepInfo);
-                else if (stepInfo.startableCount > 0) partiallyReadySteps.push(stepInfo);
-                else waitingSteps.push(stepInfo);
+            stepInfos.forEach(s => {
+                const remaining = s.partList.length - s.completedCount;
+                if (remaining === 0) completedSteps.push(s);
+                else if (s.startableCount === remaining) fullyReadySteps.push(s);
+                else if (s.startableCount > 0) partiallyReadySteps.push(s);
+                else waitingSteps.push(s);
             });
             
             const mergedReadyGroups = new Map();
-            fullyReadySteps.forEach(stepInfo => {
-                if(!mergedReadyGroups.has(stepInfo.color)) mergedReadyGroups.set(stepInfo.color, []);
-                mergedReadyGroups.get(stepInfo.color).push(stepInfo);
+            fullyReadySteps.forEach(s => {
+                if(!mergedReadyGroups.has(s.color)) mergedReadyGroups.set(s.color, []);
+                mergedReadyGroups.get(s.color).push(s);
             });
             
+            outputDiv.innerHTML = '';
             completedSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
             mergedReadyGroups.forEach(group => outputDiv.appendChild(createMergedStepWrapper(group)));
             partiallyReadySteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
@@ -703,6 +732,8 @@
             updateScheduleView();
         }
 
+        // --- Persistence and Data Handling ---
+
         function autoSaveProjectState() {
             if (!state.projectId) return;
             const key = `paintSequencerProject_${state.projectId}`;
@@ -723,14 +754,13 @@
         }
 
         function saveStateToURL() {
-            const jsonState = JSON.stringify(state);
-            const base64State = btoa(unescape(encodeURIComponent(jsonState)));
-            window.location.hash = base64State;
+            const json = JSON.stringify(state);
+            const base64 = btoa(unescape(encodeURIComponent(json)));
+            window.location.hash = base64;
             navigator.clipboard.writeText(window.location.href).then(() => {
-                const saveFeedback = document.getElementById('save-feedback');
-                saveFeedback.textContent = 'Saved! Link copied to clipboard.';
-                saveFeedback.style.opacity = '1';
-                setTimeout(() => { saveFeedback.style.opacity = '0'; }, 3000);
+                document.getElementById('save-feedback').textContent = 'Saved! Link copied to clipboard.';
+                document.getElementById('save-feedback').style.opacity = '1';
+                setTimeout(() => { document.getElementById('save-feedback').style.opacity = '0'; }, 3000);
             });
             clearAutoSavedProjectState();
             markAsSaved();
@@ -739,28 +769,28 @@
         function decodeStateFromURL() {
             if (!window.location.hash) return null;
             try {
-                const jsonState = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
-                let loadedState = JSON.parse(jsonState);
-
+                const json = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
+                let loadedState = JSON.parse(json);
                 if (loadedState && loadedState.paints && loadedState.parts) {
-                    if (loadedState.paints.length > 0 && typeof loadedState.paints[0] === 'string') {
-                        let currentPaintId = 0;
-                        loadedState.paints = loadedState.paints.map(pName => ({ id: currentPaintId++, name: pName }));
-                    }
                     if (!loadedState.projectId) loadedState.projectId = generateId();
+                    
+                    // Backwards compatibility: upgrade name-based sequences to ID-based
+                    if (loadedState.parts.length > 0 && loadedState.parts[0].sequence.length > 0 && typeof loadedState.parts[0].sequence[0] === 'string') {
+                        const nameToIdMap = new Map(loadedState.paints.map(p => [p.name, p.id]));
+                        loadedState.parts.forEach(part => {
+                            part.sequence = part.sequence.map(name => nameToIdMap.get(name)).filter(id => id !== undefined);
+                        });
+                    }
                     return loadedState;
                 }
-            } catch (e) {
-                console.error("Failed to load state from URL hash:", e);
-                alert("Could not load project from link. The link may be corrupted.");
-            }
+            } catch (e) { console.error("Failed to load state from URL hash:", e); }
             return null;
         }
 
         function loadAutoSavedProjectState(projectId) {
             if (!projectId) return null;
             const key = `paintSequencerProject_${projectId}`;
-            const savedData = localStorage.getItem(key);
+            const savedData= localStorage.getItem(key);
             if (savedData) {
                 try { return JSON.parse(savedData); }
                 catch (e) { console.error("Failed to parse auto-saved project state:", e); return null; }
@@ -769,10 +799,9 @@
         }
         
         function loadProgressFromLocalStorage(projectId) {
-            scheduleData.completedTasks = new Set();
+            scheduleData.completedTasks.clear();
             if (!projectId) return;
-            const key = `paintSequencerProgress_${projectId}`;
-            const savedData = localStorage.getItem(key);
+            const savedData = localStorage.getItem(`paintSequencerProgress_${projectId}`);
             if (savedData) {
                 try { scheduleData.completedTasks = new Set(JSON.parse(savedData)); } 
                 catch(e) { console.error("Failed to parse progress from localStorage:", e); }
@@ -796,11 +825,11 @@
 
         function _resetSchedule(clearProgress = true) {
             scheduleData.steps = [];
-            scheduleData.partToSequence = new Map();
+            scheduleData.partToSequence.clear();
             scheduleData.currentTargetPartName = null;
-            scheduleData.targetPathStepIds = new Set();
+            scheduleData.targetPathStepIds.clear();
             if (clearProgress && state.projectId) {
-                scheduleData.completedTasks = new Set();
+                scheduleData.completedTasks.clear();
                 saveProgressToLocalStorage();
             }
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
@@ -809,7 +838,7 @@
             outputSection.classList.remove('invalidated');
         }
 
-        function _performReset() {
+        function _performReset(isNewProject = true) {
             if(state.projectId) {
                 localStorage.removeItem(`paintSequencerProgress_${state.projectId}`);
                 localStorage.removeItem(`paintSequencerProject_${state.projectId}`);
@@ -817,87 +846,198 @@
             state = { projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0; nextPaintId = 0;
             _resetSchedule(true);
-            history.pushState("", document.title, window.location.pathname + window.location.search);
+            if(isNewProject) history.pushState("", document.title, window.location.pathname + window.location.search);
             exitStampMode();
             markAsSaved();
         }
 
         function handleReset() { if (confirm('Reset everything? This will clear all data, including auto-saves and progress for this project.')) { _performReset(); renderAll(); } }
         
-        function loadInitialData() {
-            _performReset();
-            state.title = 'HG Gundam "Paint-by-Numbers"';
-            state.paints = [
-                {id: nextPaintId++, name: 'Primer'}, {id: nextPaintId++, name: 'Frame Gray'}, {id: nextPaintId++, name: 'Armor White'}, 
-                {id: nextPaintId++, name: 'Gundam Blue'}, {id: nextPaintId++, name: 'Fin Red'}, {id: nextPaintId++, name: 'V-Fin Yellow'}, 
-                {id: nextPaintId++, name: 'Gloss Clearcoat'}
-            ];
-            state.parts.push(
-                { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['Primer', 'Gundam Blue', 'Armor White', 'Gloss Clearcoat'] },
-                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Armor White', 'Primer', 'Gundam Blue', 'Gloss Clearcoat']},
-                { id: nextPartId++, name: 'C-2, C-5 (Leg Frame)', sequence: ['Frame Gray'] },
-                { id: nextPartId++, name: 'D-1 (Shield)', sequence: ['Primer', 'Fin Red', 'Armor White', 'Gloss Clearcoat'] },
-                { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['Primer', 'V-Fin Yellow', 'Gloss Clearcoat'] }
-            );
-            markAsUnsavedAndAutoSave();
-            renderAll();
+        // --- JSON Import/Export ---
+
+        const projectSchema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Paint Sequencer Project",
+            "description": "A project file for the Paint Sequencer application.",
+            "type": "object",
+            "properties": {
+                "title": { "type": "string", "description": "The title of the project." },
+                "paints": {
+                    "type": "array",
+                    "description": "A list of available paints.",
+                    "items": {
+                        "type": "object",
+                        "properties": { "id": { "type": "number" }, "name": { "type": "string" } },
+                        "required": ["id", "name"]
+                    }
+                },
+                "parts": {
+                    "type": "array",
+                    "description": "A list of parts to be painted.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "number" },
+                            "name": { "type": "string" },
+                            "sequence": { "type": "array", "items": { "type": "number" }, "description": "An array of paint IDs." }
+                        },
+                        "required": ["id", "name", "sequence"]
+                    }
+                }
+            },
+            "required": ["title", "paints", "parts"]
+        };
+
+
+        function generateProjectJSON() {
+            const projectData = {
+                title: state.title,
+                paints: state.paints.map(({ id, name }) => ({ id, name })),
+                parts: state.parts.map(({ id, name, sequence }) => ({ id, name, sequence }))
+            };
+            return JSON.stringify(projectData, null, 2);
+        }
+
+        function openJsonModal() {
+            document.getElementById('json-export-area').value = generateProjectJSON();
+            document.getElementById('json-schema-area').textContent = JSON.stringify(projectSchema, null, 2);
+            jsonModalOverlay.style.display = 'block';
+        }
+        function closeJsonModal() { jsonModalOverlay.style.display = 'none'; resetJsonImportStatus(); }
+
+        function setupJsonModal() {
+            importExportBtn.addEventListener('click', openJsonModal);
+            jsonModalCloseBtn.addEventListener('click', closeJsonModal);
+            jsonModalOverlay.addEventListener('click', (e) => { if (e.target === jsonModalOverlay) closeJsonModal(); });
+
+            const tabs = jsonModal.querySelectorAll('.modal-tab');
+            const panes = jsonModal.querySelectorAll('.tab-pane');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    panes.forEach(p => p.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+                });
+            });
+            
+            document.getElementById('copy-json-btn').addEventListener('click', () => {
+                const area = document.getElementById('json-export-area');
+                navigator.clipboard.writeText(area.value).then(() => alert('JSON copied to clipboard!'));
+            });
+
+            document.getElementById('import-json-btn').addEventListener('click', handleJsonImport);
+        }
+
+        function setJsonImportStatus(message, isError=false){
+            const statusEl = document.getElementById('json-status');
+            statusEl.textContent = message;
+            statusEl.className = isError ? 'error' : '';
+        }
+        function resetJsonImportStatus(){ setJsonImportStatus('', false); }
+
+        async function handleJsonImport() {
+            resetJsonImportStatus();
+            const jsonText = document.getElementById('json-import-area').value;
+            const jsonUrl = document.getElementById('json-import-url').value;
+            let projectData;
+
+            try {
+                if (jsonText) {
+                    projectData = JSON.parse(jsonText);
+                } else if (jsonUrl) {
+                    setJsonImportStatus("Fetching from URL...");
+                    const response = await fetch(jsonUrl);
+                    if (!response.ok) throw new Error(`Failed to fetch from URL: ${response.statusText}`);
+                    projectData = await response.json();
+                } else {
+                    setJsonImportStatus("Please paste JSON or provide a URL.", true);
+                    return;
+                }
+
+                if (!projectData.title || !Array.isArray(projectData.paints) || !Array.isArray(projectData.parts)) {
+                    throw new Error("Invalid JSON structure. Missing required fields.");
+                }
+
+                if(confirm("This will replace your current project. All unsaved changes and progress will be lost. Continue?")) {
+                    loadProjectFromData(projectData);
+                    closeJsonModal();
+                }
+            } catch (error) {
+                console.error("JSON Import Error:", error);
+                setJsonImportStatus(`Error: ${error.message}`, true);
+            }
         }
         
-        function initializeApp() {
-            const getDefaultState = () => ({ projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
-            
-            let stateFromURL = decodeStateFromURL();
-            let projectId = stateFromURL ? stateFromURL.projectId : null;
-            let autoSavedState = projectId ? loadAutoSavedProjectState(projectId) : null;
-            
-            if (autoSavedState) {
-                state = { ...getDefaultState(), ...autoSavedState };
-                markAsUnsavedAndAutoSave();
-            } else if (stateFromURL) {
-                state = { ...getDefaultState(), ...stateFromURL };
-                markAsSaved();
-            } else {
-                loadInitialData(); // This calls _performReset and sets up the example
-                return; // Exit early since loadInitialData handles rendering.
-            }
+        function loadProjectFromData(data) {
+            _performReset(false); // Reset without changing URL
+            state.title = data.title;
+            state.paints = data.paints;
+            state.parts = data.parts;
+            markAsUnsavedAndAutoSave();
+            initializeAppLogic(); // Re-init with new state
+        }
+        
+        // --- Initialization ---
 
+        function initializeAppLogic() {
             nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1;
             nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1;
-            
             loadProgressFromLocalStorage(state.projectId);
             renderAll();
             generateOptimalOrder();
         }
+
+        function initializeApp() {
+            const getDefaultState = () => ({ projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
+            let loadedState = null;
+            let stateFromURL = decodeStateFromURL();
+            if (stateFromURL) {
+                let autoSavedState = loadAutoSavedProjectState(stateFromURL.projectId);
+                loadedState = autoSavedState || stateFromURL;
+                if(autoSavedState) markAsUnsavedAndAutoSave(); else markAsSaved();
+            }
+            
+            if (loadedState) {
+                state = { ...getDefaultState(), ...loadedState };
+            } else {
+                _performReset();
+                state.title = 'HG Gundam "Paint-by-Numbers"';
+                state.paints = [ {id: 0, name: 'Primer'}, {id: 1, name: 'Frame Gray'}, {id: 2, name: 'Armor White'}, {id: 3, name: 'Gundam Blue'}, {id: 4, name: 'Fin Red'}, {id: 5, name: 'V-Fin Yellow'}, {id: 6, name: 'Gloss Clearcoat'} ];
+                state.parts.push( { id: 0, name: 'A-13 (Chest)', sequence: [0, 3, 2, 6] }, { id: 1, name: 'B-4 (Skirt)', sequence: [0, 2, 0, 3, 6]}, { id: 2, name: 'C-2, C-5 (Leg Frame)', sequence: [1] }, { id: 3, name: 'D-1 (Shield)', sequence: [0, 4, 2, 6] }, { id: 4, name: 'F-9 (V-Fin)', sequence: [0, 5, 6] } );
+                markAsUnsavedAndAutoSave();
+            }
+            initializeAppLogic();
+        }
         
-        // EVENT LISTENERS
-        addPaintBtn.addEventListener('click', handleAddPaint);
-        paintInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPaint());
-        paintList.addEventListener('click', handlePaintListClick);
-        paintList.addEventListener('blur', (e) => handleNameEdit(e, 'paint'), true);
-        paintList.addEventListener('keydown', (e) => handleNameEdit(e, 'paint'), true);
-        addPartBtn.addEventListener('click', handleAddPart);
-        partInput.addEventListener('keydown', e => e.key === 'Enter' && handleAddPart());
-        partList.addEventListener('click', handlePartListClick);
-        partList.addEventListener('blur', (e) => handleNameEdit(e, 'part'), true);
-        partList.addEventListener('keydown', (e) => handleNameEdit(e, 'part'), true);
-        partSequenceContainer.addEventListener('click', handleSequenceInteraction);
-        titleInput.addEventListener('input', handleTitleChange);
-        saveBtn.addEventListener('click', saveStateToURL);
-        revertBtn.addEventListener('click', handleRevert);
-        generateBtn.addEventListener('click', generateOptimalOrder);
-        resetProgressBtn.addEventListener('click', handleResetProgress);
-        resetBtn.addEventListener('click', handleReset);
-        stampToolBtn.addEventListener('click', enterStampMode);
-        exitStampBtn.addEventListener('click', exitStampMode);
-        stampColorSelect.addEventListener('change', handleStampColorChange);
-        outputDiv.addEventListener('change', handleOutputChange);
-        targetPartSelect.addEventListener('change', () => {
-            scheduleData.currentTargetPartName = targetPartSelect.value || null;
-            updateTargetPath();
-            updateScheduleView();
-        });
+        // Event listeners
+        const eventListeners = [
+            { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint },
+            { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() },
+            { el: paintList, event: 'click', handler: handlePaintListClick },
+            { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true },
+            { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') },
+            { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart },
+            { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() },
+            { el: partList, event: 'click', handler: handlePartListClick },
+            { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true },
+            { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') },
+            { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction },
+            { el: titleInput, event: 'input', handler: handleTitleChange },
+            { el: saveBtn, event: 'click', handler: saveStateToURL },
+            { el: revertBtn, event: 'click', handler: handleRevert },
+            { el: generateBtn, event: 'click', handler: generateOptimalOrder },
+            { el: resetProgressBtn, event: 'click', handler: handleResetProgress },
+            { el: resetBtn, event: 'click', handler: handleReset },
+            { el: stampToolBtn, event: 'click', handler: enterStampMode },
+            { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode },
+            { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange },
+            { el: outputDiv, event: 'change', handler: handleOutputChange },
+            { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); } }
+        ];
+        eventListeners.forEach(({el, event, handler, capture}) => el.addEventListener(event, handler, capture || false));
         
-        // INITIALIZATION
+        setupJsonModal();
         initializeApp();
     });
     </script>
