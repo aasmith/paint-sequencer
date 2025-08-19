@@ -70,6 +70,7 @@
         .step-wrapper:last-child { border-bottom: none; }
         .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .start-indicator { font-size: 1.5rem; line-height: 1; width: 24px; text-align: center; cursor: help;}
+        .start-indicator.success { color: var(--secondary-color); }
         .start-indicator.full { color: var(--warning-color); }
         .start-indicator.partial { color: var(--primary-color); }
         .start-indicator.stop { color: var(--danger-color); }
@@ -169,7 +170,7 @@
                     <h2>✔️ Optimized Schedule</h2>
                     <span id="progress-percentage"></span>
                     <select id="target-part-select" title="Select a part to highlight its critical path"></select>
-                    <small class="legend">⭐ Full, ▶️ Partial, 🛑 Blocked</small>
+                    <small class="legend">✔️ Completed, ⭐ Full, ▶️ Partial, 🛑 Blocked</small>
                 </div>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
@@ -449,7 +450,6 @@
                 
                 const bestChoice = choices[0];
                 const stepId = stepIdCounter++;
-                // A step's partList is now objects with name and the index in that part's sequence
                 const stepParts = bestChoice.partList.map(p => ({ name: p.name, index: p.currentStep }));
                 scheduleData.steps.push({ id: stepId, color: bestChoice.color, partList: stepParts });
                 bestChoice.partList.forEach(part => { part.currentStep++; });
@@ -482,7 +482,7 @@
             let toProcess = [...requiredTasks];
             while (toProcess.length > 0) {
                 const taskKey = toProcess.pop();
-                const [partName, color, indexStr] = taskKey.split('__');
+                const [partName, , indexStr] = taskKey.split('__');
                 const index = parseInt(indexStr);
                 const sequence = partToSequence.get(partName);
                 if(!sequence || index === 0) continue;
@@ -506,10 +506,10 @@
             });
         }
         
-        function isPartStartable(partName, color, index) {
+        function isPartStartable(partName, index) {
             if (index === 0) return true;
             const sequence = scheduleData.partToSequence.get(partName);
-            if (!sequence || index > sequence.length) return false;
+            if (!sequence || index >= sequence.length) return false;
             
             const prereqIndex = index - 1;
             const prereqColor = sequence[prereqIndex];
@@ -520,26 +520,32 @@
             const wrapper = document.createElement('div');
             wrapper.className = 'step-wrapper';
 
-            let indicatorIcon = '🛑'; let indicatorTitle = 'No parts are ready yet.'; let indicatorClass = 'stop';
-            
+            let indicatorIcon, indicatorTitle, indicatorClass;
             const remainingPartsInStep = stepInfo.partList.length - stepInfo.completedCount;
-            if (remainingPartsInStep > 0) {
+
+            if (remainingPartsInStep === 0) {
+                indicatorIcon = '✔️';
+                indicatorTitle = 'Step completed.';
+                indicatorClass = 'success';
+                wrapper.classList.add('is-completed');
+            } else {
                 if (stepInfo.startableCount === remainingPartsInStep) {
                     indicatorIcon = '⭐'; indicatorTitle = 'All remaining parts are ready.'; indicatorClass = 'full';
                 } else if (stepInfo.startableCount > 0) {
                     indicatorIcon = '▶️'; indicatorTitle = 'Some parts are ready.'; indicatorClass = 'partial';
+                } else {
+                    indicatorIcon = '🛑'; indicatorTitle = 'No parts are ready yet.'; indicatorClass = 'stop';
                 }
             }
 
-            if (stepInfo.completedCount === stepInfo.partList.length) wrapper.classList.add('is-completed');
             if(scheduleData.targetPathStepIds.has(stepInfo.id)) wrapper.classList.add('is-target-path');
             
             let countText = '';
-            if(stepInfo.startableCount > 0) countText = ` (${stepInfo.startableCount} of ${remainingPartsInStep} ready)`;
+            if(stepInfo.startableCount > 0 && remainingPartsInStep > 0) countText = ` (${stepInfo.startableCount} of ${remainingPartsInStep} ready)`;
             
             wrapper.innerHTML = `
                 <div class="step-header">
-                    <span class="start-indicator ${indicatorClass}" title="${indicatorTitle}">${indicatorIcon}</span>
+                    <span class="start-indicator ${indicatorClass}" title="${sanitizeHTML(indicatorTitle)}">${indicatorIcon}</span>
                     <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepInfo.color)}</code>${countText}</span>
                     <label class="check-all-label">
                         <input type="checkbox" class="master-checkbox" data-step-id="${stepInfo.id}" ${stepInfo.startableCount === 0 ? 'disabled' : ''}> Check All Ready
@@ -566,7 +572,7 @@
                 <input type="checkbox" class="master-checkbox" data-original-step-ids="${allOriginalIds.join(',')}" ${totalStartable === 0 ? 'disabled' : ''}> Check All Ready
             </label>`;
             
-            let partListHTML = ''; let noticesHTML = '';
+            let partListHTML = '', noticesHTML = '';
             stepGroup.forEach(stepInfo => {
                 partListHTML += generatePartListHTML(stepInfo);
                 noticesHTML += generateCompletionNoticesHTML(stepInfo);
@@ -588,7 +594,7 @@
                 const { name, index } = partInfo;
                 const taskKey = getTaskKey(name, stepInfo.color, index);
                 const isCompleted = scheduleData.completedTasks.has(taskKey);
-                const canStart = !isCompleted && isPartStartable(name, stepInfo.color, index);
+                const canStart = !isCompleted && isPartStartable(name, index);
                 let classes = 'part-item';
                 if (isCompleted) classes += ' completed';
                 if (!canStart && !isCompleted) classes += ' waiting';
@@ -631,7 +637,7 @@
                 step.partList.forEach(partInfo => {
                     const isCompleted = scheduleData.completedTasks.has(getTaskKey(partInfo.name, step.color, partInfo.index));
                     if(isCompleted) completedCount++;
-                    else if(isPartStartable(partInfo.name, step.color, partInfo.index)) startableCount++;
+                    else if(isPartStartable(partInfo.name, partInfo.index)) startableCount++;
                 });
                 return { ...step, completedCount, startableCount };
             });
@@ -685,8 +691,9 @@
                     const step = scheduleData.steps.find(s => s.id === stepId);
                     if (!step) return;
                     step.partList.forEach(partInfo => {
-                        if (!scheduleData.completedTasks.has(getTaskKey(partInfo.name, step.color, partInfo.index)) && isPartStartable(partInfo.name, step.color, partInfo.index)) {
-                            toggleTask(partInfo.name, step.color, partInfo.index, isChecking);
+                        const { name, index } = partInfo;
+                        if (!scheduleData.completedTasks.has(getTaskKey(name, step.color, index)) && isPartStartable(name, index)) {
+                            toggleTask(name, step.color, index, isChecking);
                         }
                     });
                 });
@@ -827,7 +834,7 @@
             ];
             state.parts.push(
                 { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['Primer', 'Gundam Blue', 'Armor White', 'Gloss Clearcoat'] },
-                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Armor White', 'Primer', 'Gundam Blue', 'Gloss Clearcoat']}, // Example with duplicate
+                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Armor White', 'Primer', 'Gundam Blue', 'Gloss Clearcoat']},
                 { id: nextPartId++, name: 'C-2, C-5 (Leg Frame)', sequence: ['Frame Gray'] },
                 { id: nextPartId++, name: 'D-1 (Shield)', sequence: ['Primer', 'Fin Red', 'Armor White', 'Gloss Clearcoat'] },
                 { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['Primer', 'V-Fin Yellow', 'Gloss Clearcoat'] }
