@@ -204,9 +204,9 @@
         const targetPartSelect = document.getElementById('target-part-select');
         const stampColorSelect = document.getElementById('stamp-color-select');
         
-        const sanitizeHTML = str => str.replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
+        const sanitizeHTML = str => String(str).replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
         const generateId = () => Math.random().toString(36).substring(2, 9);
-        const getTaskKey = (partName, color) => `${partName}__${color}`;
+        const getTaskKey = (partName, color, index) => `${partName}__${color}__${index}`;
 
         const renderAll = () => { renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
         const renderTitle = () => { titleInput.value = state.title; };
@@ -356,10 +356,10 @@
                 
                 const newCompletedTasks = new Set();
                 scheduleData.completedTasks.forEach(taskKey => {
-                    let [partName, paintName] = taskKey.split('__');
+                    let [partName, paintName, index] = taskKey.split('__');
                     if (listType === 'paint' && paintName === oldValue) { paintName = newValue; } 
                     else if (listType === 'part' && partName === oldValue) { partName = newValue; }
-                    newCompletedTasks.add(getTaskKey(partName, paintName));
+                    newCompletedTasks.add(getTaskKey(partName, paintName, index));
                 });
                 scheduleData.completedTasks = newCompletedTasks;
                 saveProgressToLocalStorage();
@@ -372,7 +372,9 @@
                 } else { // part
                     const part = state.parts.find(p => p.name === oldValue);
                     if (part) part.name = newValue;
-                    scheduleData.steps.forEach(s => { s.partList = s.partList.map(p => p === oldValue ? newValue : p); });
+                    scheduleData.steps.forEach(s => { 
+                        s.partList = s.partList.map(p => p.name === oldValue ? { ...p, name: newValue } : p);
+                    });
                     scheduleData.partToSequence.forEach((seq, key) => { if(key === oldValue) { scheduleData.partToSequence.delete(key); scheduleData.partToSequence.set(newValue, seq); }});
                     if(scheduleData.currentTargetPartName === oldValue) scheduleData.currentTargetPartName = newValue;
                 }
@@ -423,7 +425,7 @@
             }
             _resetSchedule(false); // Keep progress but clear old schedule
             
-            let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0, originalSequence: p.sequence }));
+            let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
             if (partsToProcess.length === 0) {
                 outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; return;
             }
@@ -447,7 +449,9 @@
                 
                 const bestChoice = choices[0];
                 const stepId = stepIdCounter++;
-                scheduleData.steps.push({ id: stepId, color: bestChoice.color, partList: bestChoice.partList.map(p => p.name) });
+                // A step's partList is now objects with name and the index in that part's sequence
+                const stepParts = bestChoice.partList.map(p => ({ name: p.name, index: p.currentStep }));
+                scheduleData.steps.push({ id: stepId, color: bestChoice.color, partList: stepParts });
                 bestChoice.partList.forEach(part => { part.currentStep++; });
             }
 
@@ -474,27 +478,27 @@
             const targetSequence = partToSequence.get(currentTargetPartName);
             if (!targetSequence) return;
             
-            let requiredTasks = new Set(targetSequence.map(color => getTaskKey(currentTargetPartName, color)));
+            let requiredTasks = new Set(targetSequence.map((color, index) => getTaskKey(currentTargetPartName, color, index)));
             let toProcess = [...requiredTasks];
             while (toProcess.length > 0) {
                 const taskKey = toProcess.pop();
-                const [partName, color] = taskKey.split('__');
+                const [partName, color, indexStr] = taskKey.split('__');
+                const index = parseInt(indexStr);
                 const sequence = partToSequence.get(partName);
-                if(!sequence) continue;
-                const colorIndex = sequence.indexOf(color);
+                if(!sequence || index === 0) continue;
 
-                if (colorIndex > 0) {
-                    const prereqTaskKey = getTaskKey(partName, sequence[colorIndex - 1]);
-                    if (!requiredTasks.has(prereqTaskKey)) {
-                        requiredTasks.add(prereqTaskKey);
-                        toProcess.push(prereqTaskKey);
-                    }
+                const prereqIndex = index - 1;
+                const prereqColor = sequence[prereqIndex];
+                const prereqTaskKey = getTaskKey(partName, prereqColor, prereqIndex);
+                if (!requiredTasks.has(prereqTaskKey)) {
+                    requiredTasks.add(prereqTaskKey);
+                    toProcess.push(prereqTaskKey);
                 }
             }
 
             steps.forEach(step => {
-                for (const partName of step.partList) {
-                    if (requiredTasks.has(getTaskKey(partName, step.color))) {
+                for (const partInfo of step.partList) {
+                    if (requiredTasks.has(getTaskKey(partInfo.name, step.color, partInfo.index))) {
                         scheduleData.targetPathStepIds.add(step.id);
                         break;
                     }
@@ -502,15 +506,14 @@
             });
         }
         
-        function isPartStartable(partName, color) {
+        function isPartStartable(partName, color, index) {
+            if (index === 0) return true;
             const sequence = scheduleData.partToSequence.get(partName);
-            if (!sequence) return false;
+            if (!sequence || index > sequence.length) return false;
             
-            const colorIndex = sequence.indexOf(color);
-            if(colorIndex <= 0) return true;
-
-            const prereqColor = sequence[colorIndex - 1];
-            return scheduleData.completedTasks.has(getTaskKey(partName, prereqColor));
+            const prereqIndex = index - 1;
+            const prereqColor = sequence[prereqIndex];
+            return scheduleData.completedTasks.has(getTaskKey(partName, prereqColor, prereqIndex));
         }
 
         function createStepWrapper(stepInfo) {
@@ -581,28 +584,35 @@
         }
         
         function generatePartListHTML(stepInfo) {
-            return stepInfo.partList.sort().map(partName => {
-                const taskKey = getTaskKey(partName, stepInfo.color);
+            return stepInfo.partList.map(partInfo => {
+                const { name, index } = partInfo;
+                const taskKey = getTaskKey(name, stepInfo.color, index);
                 const isCompleted = scheduleData.completedTasks.has(taskKey);
-                const canStart = !isCompleted && isPartStartable(partName, stepInfo.color);
+                const canStart = !isCompleted && isPartStartable(name, stepInfo.color, index);
                 let classes = 'part-item';
                 if (isCompleted) classes += ' completed';
                 if (!canStart && !isCompleted) classes += ' waiting';
                 return `<li class="${classes}"><label>
-                        <input type="checkbox" class="part-checkbox" data-part-name="${sanitizeHTML(partName)}" data-color="${sanitizeHTML(stepInfo.color)}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
-                        ${sanitizeHTML(partName)}</label></li>`;
-            }).join('');
+                        <input type="checkbox" class="part-checkbox" 
+                            data-part-name="${sanitizeHTML(name)}" 
+                            data-color="${sanitizeHTML(stepInfo.color)}" 
+                            data-index="${index}" 
+                            ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
+                        ${sanitizeHTML(name)}</label></li>`;
+            }).sort((a,b) => a.localeCompare(b)).join('');
         }
         
         function generateCompletionNoticesHTML(stepInfo) {
             let html = '';
             const willCompleteParts = [], didCompleteParts = [];
 
-            stepInfo.partList.forEach(partName => {
-                const sequence = scheduleData.partToSequence.get(partName);
-                if (sequence && sequence[sequence.length - 1] === stepInfo.color) {
-                    if (scheduleData.completedTasks.has(getTaskKey(partName, stepInfo.color))) { didCompleteParts.push(partName); } 
-                    else { willCompleteParts.push(partName); }
+            stepInfo.partList.forEach(partInfo => {
+                const { name, index } = partInfo;
+                const sequence = scheduleData.partToSequence.get(name);
+                if (sequence && index === sequence.length - 1) {
+                    const taskKey = getTaskKey(name, stepInfo.color, index);
+                    if (scheduleData.completedTasks.has(taskKey)) { didCompleteParts.push(name); } 
+                    else { willCompleteParts.push(name); }
                 }
             });
 
@@ -618,10 +628,10 @@
 
             const stepInfos = scheduleData.steps.map(step => {
                 let completedCount = 0, startableCount = 0;
-                step.partList.forEach(partName => {
-                    const isCompleted = scheduleData.completedTasks.has(getTaskKey(partName, step.color));
+                step.partList.forEach(partInfo => {
+                    const isCompleted = scheduleData.completedTasks.has(getTaskKey(partInfo.name, step.color, partInfo.index));
                     if(isCompleted) completedCount++;
-                    else if(isPartStartable(partName, step.color)) startableCount++;
+                    else if(isPartStartable(partInfo.name, step.color, partInfo.index)) startableCount++;
                 });
                 return { ...step, completedCount, startableCount };
             });
@@ -653,7 +663,7 @@
             
             let fullyCompletedPartsCount = 0;
             partToSequence.forEach((sequence, partName) => {
-                if (sequence.every(color => completedTasks.has(getTaskKey(partName, color)))) fullyCompletedPartsCount++;
+                if (sequence.every((color, index) => completedTasks.has(getTaskKey(partName, color, index)))) fullyCompletedPartsCount++;
             });
             const percentage = Math.round((fullyCompletedPartsCount / partToSequence.size) * 100);
             progressPercentageEl.textContent = `Progress: ${percentage}%`;
@@ -661,22 +671,22 @@
 
         function handleOutputChange(e) {
             const target = e.target;
-            function toggleTask(partName, color, shouldBeChecked) {
-                const taskKey = getTaskKey(partName, color);
+            function toggleTask(partName, color, index, shouldBeChecked) {
+                const taskKey = getTaskKey(partName, color, index);
                 if (shouldBeChecked) scheduleData.completedTasks.add(taskKey); else scheduleData.completedTasks.delete(taskKey);
             }
 
             if (target.matches('.part-checkbox')) {
-                toggleTask(target.dataset.partName, target.dataset.color, target.checked);
+                toggleTask(target.dataset.partName, target.dataset.color, parseInt(target.dataset.index), target.checked);
             } else if (target.matches('.master-checkbox')) {
                 const isChecking = target.checked;
                 const stepIds = (target.dataset.originalStepIds || target.dataset.stepId).split(',').map(Number);
                 stepIds.forEach(stepId => {
                     const step = scheduleData.steps.find(s => s.id === stepId);
                     if (!step) return;
-                    step.partList.forEach(partName => {
-                        if (!scheduleData.completedTasks.has(getTaskKey(partName, step.color)) && isPartStartable(partName, step.color)) {
-                            toggleTask(partName, step.color, isChecking);
+                    step.partList.forEach(partInfo => {
+                        if (!scheduleData.completedTasks.has(getTaskKey(partInfo.name, step.color, partInfo.index)) && isPartStartable(partInfo.name, step.color, partInfo.index)) {
+                            toggleTask(partInfo.name, step.color, partInfo.index, isChecking);
                         }
                     });
                 });
@@ -706,8 +716,7 @@
         }
 
         function saveStateToURL() {
-            const stateToSave = { ...state };
-            const jsonState = JSON.stringify(stateToSave);
+            const jsonState = JSON.stringify(state);
             const base64State = btoa(unescape(encodeURIComponent(jsonState)));
             window.location.hash = base64State;
             navigator.clipboard.writeText(window.location.href).then(() => {
@@ -818,7 +827,7 @@
             ];
             state.parts.push(
                 { id: nextPartId++, name: 'A-13 (Chest)', sequence: ['Primer', 'Gundam Blue', 'Armor White', 'Gloss Clearcoat'] },
-                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Gundam Blue', 'Gloss Clearcoat']},
+                { id: nextPartId++, name: 'B-4 (Skirt)', sequence: ['Primer', 'Armor White', 'Primer', 'Gundam Blue', 'Gloss Clearcoat']}, // Example with duplicate
                 { id: nextPartId++, name: 'C-2, C-5 (Leg Frame)', sequence: ['Frame Gray'] },
                 { id: nextPartId++, name: 'D-1 (Shield)', sequence: ['Primer', 'Fin Red', 'Armor White', 'Gloss Clearcoat'] },
                 { id: nextPartId++, name: 'F-9 (V-Fin)', sequence: ['Primer', 'V-Fin Yellow', 'Gloss Clearcoat'] }
@@ -829,7 +838,6 @@
         
         function initializeApp() {
             const getDefaultState = () => ({ projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
-            state = getDefaultState();
             
             let stateFromURL = decodeStateFromURL();
             let projectId = stateFromURL ? stateFromURL.projectId : null;
