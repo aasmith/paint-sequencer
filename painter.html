@@ -85,8 +85,8 @@
         .part-item.completed { text-decoration: line-through; }
         .step-wrapper.is-completed { opacity: 0.6; }
         .step-wrapper.is-target-path { border-left: 4px solid var(--warning-color); background-color: #fffbeb; padding-left: 10px; }
-        .completion-notices { padding-left: 48px; }
-        .completion-notice { display: flex; align-items: flex-start; color: var(--text-secondary-color); font-size: 0.9em; }
+        .completion-notices { padding-left: 48px; font-size: 0.9em; }
+        .completion-notice { display: flex; align-items: flex-start; color: var(--text-secondary-color); }
         .completion-notice span { line-height: 1.4; padding-right: 5px; }
         #output-section.invalidated #output { opacity: 0.4; }
         #output-section.invalidated::after { content: 'Schedule outdated. Please regenerate.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 100, 0.85); border: 1px solid #e0e060; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-align: center; }
@@ -121,9 +121,19 @@
         #unused-items-warning { margin-top: 20px; padding: 15px; border-radius: 6px; background-color: #fffbe6; border: 1px solid var(--warning-color); }
         #unused-items-warning h4 { margin-top: 0; margin-bottom: 10px; color: #9c6f00; }
         #unused-items-warning ul { margin: 0; padding-left: 20px; font-size: 0.9em; }
-        #completed-parts-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
-        #completed-parts-container h3 { margin-top: 0; }
-        #completed-parts-list { list-style-type: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+        #part-status-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
+        #part-status-container h3 { margin-top: 0; }
+        #part-status-list { list-style-type: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; }
+        .part-status-item { display: flex; flex-direction: column; gap: 8px; background-color: var(--bg-color); padding: 12px; border-radius: 6px; border-left: 4px solid var(--border-color); }
+        .part-status-item.is-complete { border-left-color: var(--secondary-color); }
+        .part-status-item .part-name { font-weight: 600; }
+        .part-status-item progress { width: 100%; height: 8px; border-radius: 4px; }
+        .part-status-item progress::-webkit-progress-bar { background-color: #e0e0e0; border-radius: 4px; }
+        .part-status-item progress::-webkit-progress-value { background-color: var(--primary-color); border-radius: 4px; transition: width 0.3s ease; }
+        .part-status-item.is-complete progress::-webkit-progress-value { background-color: var(--secondary-color); }
+        .part-status-item .part-progress-info { display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-secondary-color); }
+        .part-progress-info .status-ready { font-weight: 600; color: var(--secondary-color); }
+        .part-progress-info .status-blocked { font-weight: 600; color: var(--danger-color); }
         
         @media (max-width: 900px) {
             .setup-container { grid-template-columns: 1fr; }
@@ -197,9 +207,9 @@
                 </div>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
-            <div id="completed-parts-container">
-                <h3>✅ Completed Parts</h3>
-                <ul id="completed-parts-list"><li style="color: var(--text-secondary-color);">No parts completed yet.</li></ul>
+            <div id="part-status-container">
+                <h3>Part Status Tracker</h3>
+                <ul id="part-status-list"><li style="color: var(--text-secondary-color);">Generate a schedule to see part status.</li></ul>
             </div>
         </div>
     </div>
@@ -280,8 +290,8 @@
 
         const naturalSort = (a, b) => {
             const re = /(\d+)|(\D+)/g;
-            const aParts = a.match(re);
-            const bParts = b.match(re);
+            const aParts = String(a).match(re) || [];
+            const bParts = String(b).match(re) || [];
             for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
                 const aPart = aParts[i];
                 const bPart = bParts[i];
@@ -294,7 +304,7 @@
             }
             return aParts.length - bParts.length;
         };
-        
+
         function updatePaintIdMap() { paintIdMap.clear(); state.paints.forEach(paint => paintIdMap.set(paint.id, paint.name)); }
         const getPaintNameById = (id) => paintIdMap.get(id) || 'Unknown Paint';
         
@@ -310,9 +320,7 @@
 
         function renderUnusedItemsWarning() {
             const usedPaintIds = new Set();
-            state.parts.forEach(part => {
-                part.sequence.forEach(paintId => usedPaintIds.add(paintId));
-            });
+            state.parts.forEach(part => { part.sequence.forEach(paintId => usedPaintIds.add(paintId)); });
             const unusedPaints = state.paints.filter(p => !usedPaintIds.has(p.id));
             const unusedParts = state.parts.filter(p => p.sequence.length === 0);
 
@@ -320,18 +328,9 @@
                 unusedItemsWarningDiv.style.display = 'none';
                 return;
             }
-            
             let html = '<h4>⚠️ Unused Items</h4>';
-            if (unusedPaints.length > 0) {
-                html += '<strong>Paints:</strong><ul>';
-                unusedPaints.forEach(p => { html += `<li>${sanitizeHTML(p.name)}</li>`; });
-                html += '</ul>';
-            }
-            if (unusedParts.length > 0) {
-                html += '<strong>Parts:</strong><ul>';
-                unusedParts.forEach(p => { html += `<li>${sanitizeHTML(p.name)}</li>`; });
-                html += '</ul>';
-            }
+            if (unusedPaints.length > 0) { html += `<strong>Paints:</strong><ul>${unusedPaints.map(p => `<li>${sanitizeHTML(p.name)}</li>`).join('')}</ul>`; }
+            if (unusedParts.length > 0) { html += `<strong>Parts:</strong><ul>${unusedParts.map(p => `<li>${sanitizeHTML(p.name)}</li>`).join('')}</ul>`; }
             unusedItemsWarningDiv.innerHTML = html;
             unusedItemsWarningDiv.style.display = 'block';
         }
@@ -536,7 +535,9 @@
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
             if (partsToProcess.length === 0) {
-                outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; return;
+                outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; 
+                document.getElementById('part-status-list').innerHTML = `<li style="color: var(--text-secondary-color);">No sequenced parts to track.</li>`;
+                return;
             }
             
             let stepIdCounter = 0;
@@ -710,28 +711,56 @@
             return html;
         }
 
-        function renderCompletedPartsList() {
-            const completedPartsList = document.getElementById('completed-parts-list');
-            const completedPartNames = [];
+        function renderPartStatusTracker() {
+            const partStatusList = document.getElementById('part-status-list');
+            const sequencedParts = state.parts.filter(p => p.sequence.length > 0);
+            
+            if (sequencedParts.length === 0) {
+                 partStatusList.innerHTML = `<li style="color: var(--text-secondary-color);">No sequenced parts to track.</li>`;
+                 return;
+            }
 
-            scheduleData.partToSequence.forEach((sequence, partName) => {
-                if (sequence.every((color, index) => scheduleData.completedTasks.has(getTaskKey(partName, color, index)))) {
-                    completedPartNames.push(partName);
+            const items = sequencedParts.sort((a,b) => naturalSort(a.name, b.name)).map(part => {
+                const sequence = scheduleData.partToSequence.get(part.name) || [];
+                const totalSteps = sequence.length;
+                
+                const firstUncompletedIndex = sequence.findIndex((color, index) => !scheduleData.completedTasks.has(getTaskKey(part.name, color, index)));
+                
+                let progressValue, statusText, itemClass = '';
+
+                if(firstUncompletedIndex === -1 && totalSteps > 0) {
+                    progressValue = totalSteps;
+                    statusText = '✅ Completed!';
+                    itemClass = 'is-complete'
+                } else if (totalSteps > 0) {
+                    progressValue = firstUncompletedIndex;
+                    const nextPaintName = sequence[firstUncompletedIndex];
+                    const isReady = isPartStartable(part.name, firstUncompletedIndex);
+                    statusText = `Next: <strong>${sanitizeHTML(nextPaintName)}</strong> ${isReady ? '<span class="status-ready">(Ready)</span>' : '<span class="status-blocked">(Blocked)</span>'}`;
+                } else {
+                    progressValue = 0;
+                    statusText = 'No sequence defined.';
                 }
+                
+                return `
+                    <li class="part-status-item ${itemClass}">
+                        <span class="part-name">${sanitizeHTML(part.name)}</span>
+                        <progress value="${progressValue}" max="${totalSteps}"></progress>
+                        <div class="part-progress-info">
+                            <span>${progressValue}/${totalSteps} steps</span>
+                            <span>${statusText}</span>
+                        </div>
+                    </li>`;
             });
 
-            if (completedPartNames.length === 0) {
-                completedPartsList.innerHTML = `<li style="color: var(--text-secondary-color);">No parts completed yet.</li>`;
-            } else {
-                completedPartsList.innerHTML = completedPartNames
-                    .sort(naturalSort)
-                    .map(name => `<li>${sanitizeHTML(name)}</li>`)
-                    .join('');
-            }
+            partStatusList.innerHTML = items.join('');
         }
 
         function updateScheduleView() {
-            if (scheduleData.steps.length === 0) return;
+            if (scheduleData.steps.length === 0) {
+                renderPartStatusTracker(); // still render tracker even if schedule is empty
+                return;
+            }
             outputDiv.innerHTML = '';
             calculateProgress();
 
@@ -766,7 +795,7 @@
             partiallyReadySteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
             waitingSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
             
-            renderCompletedPartsList();
+            renderPartStatusTracker();
         }
         
         function calculateProgress() {
@@ -912,7 +941,7 @@
             progressPercentageEl.textContent = '';
             targetPartSelect.innerHTML = '';
             outputSection.classList.remove('invalidated');
-            document.getElementById('completed-parts-list').innerHTML = `<li style="color: var(--text-secondary-color);">No parts completed yet.</li>`;
+            document.getElementById('part-status-list').innerHTML = `<li style="color: var(--text-secondary-color);">Generate a schedule to see part status.</li>`;
         }
 
         function _performReset(isNewProject = true) {
@@ -1057,13 +1086,12 @@
                 _performReset();
                 state.title = 'HG Gundam "Paint-by-Numbers"';
                 state.paints = [ {id: 0, name: 'Primer'}, {id: 1, name: 'Frame Gray'}, {id: 2, name: 'Armor White'}, {id: 3, name: 'Gundam Blue'}, {id: 4, name: 'Fin Red'}, {id: 5, name: 'V-Fin Yellow'}, {id: 6, name: 'Gloss Clearcoat'} ];
-                state.parts.push( { id: 0, name: 'A-13 (Chest)', sequence: [0, 3, 2, 6] }, { id: 1, name: 'B-4 (Skirt)', sequence: [0, 2, 0, 3, 6]}, { id: 2, name: 'C-2, C-5 (Leg Frame)', sequence: [1] }, { id: 3, name: 'D-1 (Shield)', sequence: [0, 4, 2, 6] }, { id: 4, name: 'F-9 (V-Fin)', sequence: [0, 5, 6] } );
+                state.parts.push( { id: 0, name: 'A-13 (Chest)', sequence: [0, 3, 2, 6] }, { id: 1, name: 'B-10 (Skirt)', sequence: [0, 2, 0, 3, 6]}, { id: 2, name: 'C-2, C-5 (Leg Frame)', sequence: [1] }, { id: 3, name: 'D-1 (Shield)', sequence: [0, 4, 2, 6] }, { id: 4, name: 'B-9 (V-Fin)', sequence: [0, 5, 6] } );
                 markAsUnsavedAndAutoSave();
             }
             initializeAppLogic();
         }
         
-        // Event listeners
         const eventListeners = [
             { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint },
             { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() },
