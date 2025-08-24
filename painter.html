@@ -101,7 +101,6 @@
         .drop-target:hover::before { color: var(--warning-color); }
         .drop-target.large { width: 50px; height: 32px; }
         .drop-target.small { width: 20px; height: 32px; }
-        
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10; display: none; }
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--surface-color); border-radius: 8px; z-index: 20; width: 90%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; }
         .modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
@@ -109,16 +108,22 @@
         .modal-close { font-size: 24px; font-weight: bold; background: none; border: none; cursor: pointer; padding: 0 5px; color: var(--text-color); }
         .modal-content { padding: 20px; overflow-y: auto; }
         .modal-tabs { display: flex; border-bottom: 1px solid var(--border-color); }
-        .modal-tab { padding: 10px 15px; cursor: pointer; border: none; background: none; font-size: 1rem; border-bottom: 3px solid transparent; color: var(--text-color); } /* FIX: Explicit color set */
+        .modal-tab { padding: 10px 15px; cursor: pointer; border: none; background: none; font-size: 1rem; border-bottom: 3px solid transparent; color: var(--text-color); }
         .modal-tab.active { border-bottom-color: var(--primary-color); font-weight: 600; }
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
         .tab-pane h4 { margin-top: 0; }
         .tab-pane textarea, .tab-pane pre { width: 100%; min-height: 200px; max-height: 40vh; font-family: monospace; font-size: 0.9rem; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; }
-        .tab-pane pre { background-color: var(--bg-color); white-space: pre-wrap; word-wrap: break-word; overflow: auto; } /* FIX: Added overflow control */
+        .tab-pane pre { background-color: var(--bg-color); white-space: pre-wrap; word-wrap: break-word; overflow: auto; }
         .modal-footer { margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }
         #json-status { margin-top: 10px; font-weight: bold; }
         #json-status.error { color: var(--danger-color); }
+        #unused-items-warning { margin-top: 20px; padding: 15px; border-radius: 6px; background-color: #fffbe6; border: 1px solid var(--warning-color); }
+        #unused-items-warning h4 { margin-top: 0; margin-bottom: 10px; color: #9c6f00; }
+        #unused-items-warning ul { margin: 0; padding-left: 20px; font-size: 0.9em; }
+        #completed-parts-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
+        #completed-parts-container h3 { margin-top: 0; }
+        #completed-parts-list { list-style-type: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
         
         @media (max-width: 900px) {
             .setup-container { grid-template-columns: 1fr; }
@@ -167,6 +172,7 @@
                 <button id="exit-stamp-btn" class="btn-danger">Finish Stamping</button>
             </div>
             <div id="part-sequence-container"><p style="color: var(--text-secondary-color);">Add parts to begin.</p></div>
+            <div id="unused-items-warning" style="display: none;"></div>
         </div>
         
         <div class="card">
@@ -191,6 +197,10 @@
                 </div>
             </div>
             <div id="output"><p style="color: var(--text-secondary-color);">Your schedule will appear here.</p></div>
+            <div id="completed-parts-container">
+                <h3>✅ Completed Parts</h3>
+                <ul id="completed-parts-list"><li style="color: var(--text-secondary-color);">No parts completed yet.</li></ul>
+            </div>
         </div>
     </div>
     
@@ -262,19 +272,34 @@
         const jsonModalOverlay = document.getElementById('json-modal-overlay');
         const jsonModal = document.getElementById('json-modal');
         const jsonModalCloseBtn = document.getElementById('json-modal-close-btn');
+        const unusedItemsWarningDiv = document.getElementById('unused-items-warning');
         
         const sanitizeHTML = str => String(str).replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
         const generateId = () => Math.random().toString(36).substring(2, 9);
         const getTaskKey = (partName, colorName, index) => `${partName}__${colorName}__${index}`;
 
-        function updatePaintIdMap() {
-            paintIdMap.clear();
-            state.paints.forEach(paint => paintIdMap.set(paint.id, paint.name));
-        }
+        const naturalSort = (a, b) => {
+            const re = /(\d+)|(\D+)/g;
+            const aParts = a.match(re);
+            const bParts = b.match(re);
+            for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
+                const aPart = aParts[i];
+                const bPart = bParts[i];
+                if (!isNaN(aPart) && !isNaN(bPart)) {
+                    const numDiff = parseInt(aPart, 10) - parseInt(bPart, 10);
+                    if (numDiff !== 0) return numDiff;
+                } else if (aPart !== bPart) {
+                    return aPart.localeCompare(bPart);
+                }
+            }
+            return aParts.length - bParts.length;
+        };
+        
+        function updatePaintIdMap() { paintIdMap.clear(); state.paints.forEach(paint => paintIdMap.set(paint.id, paint.name)); }
         const getPaintNameById = (id) => paintIdMap.get(id) || 'Unknown Paint';
         
-        const renderAll = () => { updatePaintIdMap();renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
-        const renderTitle = () => { titleInput.value = state.title; };
+        const renderAll = () => { updatePaintIdMap(); renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
+        const renderTitle = () => { titleInput.value = state.title; document.title = state.title ? `${state.title} - Paint Sequencer` : "Paint Sequencer"; };
         
         const renderPaintList = () => {
              paintList.innerHTML = state.paints.map(p => `<li data-paint-id="${p.id}"><span class="editable-name" contenteditable="true" data-original-name="${sanitizeHTML(p.name)}">${sanitizeHTML(p.name)}</span><span class="remove-btn" data-paint-id="${p.id}" title="Remove Paint">×</span></li>`).join('');
@@ -282,12 +307,42 @@
         const renderPartList = () => {
             partList.innerHTML = state.parts.map(p => `<li><span class="editable-name" contenteditable="true" data-part-id="${p.id}">${sanitizeHTML(p.name)}</span><span class="remove-btn" data-part-id="${p.id}" title="Remove Part">×</span></li>`).join('');
         };
+
+        function renderUnusedItemsWarning() {
+            const usedPaintIds = new Set();
+            state.parts.forEach(part => {
+                part.sequence.forEach(paintId => usedPaintIds.add(paintId));
+            });
+            const unusedPaints = state.paints.filter(p => !usedPaintIds.has(p.id));
+            const unusedParts = state.parts.filter(p => p.sequence.length === 0);
+
+            if (unusedPaints.length === 0 && unusedParts.length === 0) {
+                unusedItemsWarningDiv.style.display = 'none';
+                return;
+            }
+            
+            let html = '<h4>⚠️ Unused Items</h4>';
+            if (unusedPaints.length > 0) {
+                html += '<strong>Paints:</strong><ul>';
+                unusedPaints.forEach(p => { html += `<li>${sanitizeHTML(p.name)}</li>`; });
+                html += '</ul>';
+            }
+            if (unusedParts.length > 0) {
+                html += '<strong>Parts:</strong><ul>';
+                unusedParts.forEach(p => { html += `<li>${sanitizeHTML(p.name)}</li>`; });
+                html += '</ul>';
+            }
+            unusedItemsWarningDiv.innerHTML = html;
+            unusedItemsWarningDiv.style.display = 'block';
+        }
         
         function renderSequenceBuilder() {
             const sequenceCard = document.getElementById('sequence-card');
             partSequenceContainer.innerHTML = '';
             if (state.parts.length === 0) {
-                partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>'; return;
+                partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>';
+                renderUnusedItemsWarning();
+                return;
             }
             const isStamping = state.stampMode.isActive;
             sequenceCard.classList.toggle('stamp-mode-active', isStamping);
@@ -321,6 +376,7 @@
                     <div class="add-paint-control"><select ${state.paints.length===0?'disabled':''}>${selectOptions}</select><button class="btn-add add-step-btn" ${state.paints.length===0?'disabled':''}>Add</button></div>`;
                 partSequenceContainer.appendChild(row);
             });
+            renderUnusedItemsWarning();
         }
         
         function markAsUnsavedAndAutoSave() { saveBtn.classList.add('unsaved'); revertBtn.style.display = 'inline-block'; autoSaveProjectState(); }
@@ -341,7 +397,7 @@
         function exitStampMode() { state.stampMode.isActive = false; document.getElementById('stamp-tool-btn').style.display = 'block'; document.getElementById('stamp-tool-toolbar').style.display = 'none'; renderAll(); }
         function handleStampColorChange(e) { state.stampMode.color = parseInt(e.target.value); }
         
-        function handleTitleChange() { state.title = titleInput.value; markAsUnsavedAndAutoSave(); }
+        function handleTitleChange() { state.title = titleInput.value; renderTitle(); markAsUnsavedAndAutoSave(); }
         
         function handleAddItems(inputElId, collection, createItem, nameProp = 'name') {
             const inputEl = document.getElementById(inputElId);
@@ -476,9 +532,6 @@
         }
 
         function generateOptimalOrder() {
-            if (state.parts.some(p => p.sequence.length === 0)) {
-                if (!confirm(`Warning: Some parts have no paint sequence and will be ignored. Continue?`)) return;
-            }
             _resetSchedule(false);
             
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
@@ -519,7 +572,7 @@
         
         function renderTargetPartSelector() {
             targetPartSelect.innerHTML = '<option value="">Default (No Target)</option>';
-            const sortedPartNames = Array.from(scheduleData.partToSequence.keys()).sort();
+            const sortedPartNames = Array.from(scheduleData.partToSequence.keys()).sort(naturalSort);
             sortedPartNames.forEach(name => { targetPartSelect.innerHTML += `<option value="${sanitizeHTML(name)}">${sanitizeHTML(name)}</option>`; });
             targetPartSelect.value = scheduleData.currentTargetPartName || "";
         }
@@ -608,8 +661,8 @@
             let countText = ` (${totalStartable} of ${totalRemaining} ready)`;
             
             const masterCheck = `<label class="check-all-label"><input type="checkbox" class="master-checkbox" data-original-step-ids="${allOriginalIds.join(',')}" ${totalStartable === 0 ? 'disabled' : ''}> Check All Ready</label>`;
-            let partListHTML = stepGroup.map(generatePartListHTML).join('');
-            let noticesHTML = stepGroup.map(generateCompletionNoticesHTML).join('');
+            const partListHTML = stepGroup.map(generatePartListHTML).join('');
+            const noticesHTML = stepGroup.map(generateCompletionNoticesHTML).join('');
 
             wrapper.innerHTML = `
                 <div class="step-header">
@@ -623,7 +676,9 @@
         }
         
         function generatePartListHTML(stepInfo) {
-            return stepInfo.partList.map(partInfo => {
+            const sortedPartList = [...stepInfo.partList].sort((a,b) => naturalSort(a.name, b.name));
+
+            return sortedPartList.map(partInfo => {
                 const { name, index } = partInfo;
                 const taskKey = getTaskKey(name, stepInfo.color, index);
                 const isCompleted = scheduleData.completedTasks.has(taskKey);
@@ -635,7 +690,7 @@
                         <input type="checkbox" class="part-checkbox" data-part-name="${sanitizeHTML(name)}" data-color="${sanitizeHTML(stepInfo.color)}" data-index="${index}" 
                             ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
                         ${sanitizeHTML(name)}</label></li>`;
-            }).sort((a,b) => a.localeCompare(b)).join('');
+            }).join('');
         }
         
         function generateCompletionNoticesHTML(stepInfo) {
@@ -650,9 +705,29 @@
                     else { willCompleteParts.push(name); }
                 }
             });
-            if (willCompleteParts.length > 0) html += `<div class="completion-notice"><span>🏆</span><div>Will complete: <strong>${willCompleteParts.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
-            if (didCompleteParts.length > 0) html += `<div class="completion-notice"><span>✔️</span><div>Completed: <strong>${didCompleteParts.map(sanitizeHTML).sort().join(', ')}</strong></div></div>`;
+            if (willCompleteParts.length > 0) html += `<div class="completion-notice"><span>🏆</span><div>Will complete: <strong>${willCompleteParts.map(sanitizeHTML).sort(naturalSort).join(', ')}</strong></div></div>`;
+            if (didCompleteParts.length > 0) html += `<div class="completion-notice"><span>✔️</span><div>Completed: <strong>${didCompleteParts.map(sanitizeHTML).sort(naturalSort).join(', ')}</strong></div></div>`;
             return html;
+        }
+
+        function renderCompletedPartsList() {
+            const completedPartsList = document.getElementById('completed-parts-list');
+            const completedPartNames = [];
+
+            scheduleData.partToSequence.forEach((sequence, partName) => {
+                if (sequence.every((color, index) => scheduleData.completedTasks.has(getTaskKey(partName, color, index)))) {
+                    completedPartNames.push(partName);
+                }
+            });
+
+            if (completedPartNames.length === 0) {
+                completedPartsList.innerHTML = `<li style="color: var(--text-secondary-color);">No parts completed yet.</li>`;
+            } else {
+                completedPartsList.innerHTML = completedPartNames
+                    .sort(naturalSort)
+                    .map(name => `<li>${sanitizeHTML(name)}</li>`)
+                    .join('');
+            }
         }
 
         function updateScheduleView() {
@@ -690,6 +765,8 @@
             mergedReadyGroups.forEach(group => outputDiv.appendChild(createMergedStepWrapper(group)));
             partiallyReadySteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
             waitingSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
+            
+            renderCompletedPartsList();
         }
         
         function calculateProgress() {
@@ -774,7 +851,6 @@
                 if (loadedState && loadedState.paints && loadedState.parts) {
                     if (!loadedState.projectId) loadedState.projectId = generateId();
                     
-                    // Backwards compatibility: upgrade name-based sequences to ID-based
                     if (loadedState.parts.length > 0 && loadedState.parts[0].sequence.length > 0 && typeof loadedState.parts[0].sequence[0] === 'string') {
                         const nameToIdMap = new Map(loadedState.paints.map(p => [p.name, p.id]));
                         loadedState.parts.forEach(part => {
@@ -836,6 +912,7 @@
             progressPercentageEl.textContent = '';
             targetPartSelect.innerHTML = '';
             outputSection.classList.remove('invalidated');
+            document.getElementById('completed-parts-list').innerHTML = `<li style="color: var(--text-secondary-color);">No parts completed yet.</li>`;
         }
 
         function _performReset(isNewProject = true) {
@@ -865,22 +942,13 @@
                 "paints": {
                     "type": "array",
                     "description": "A list of available paints.",
-                    "items": {
-                        "type": "object",
-                        "properties": { "id": { "type": "number" }, "name": { "type": "string" } },
-                        "required": ["id", "name"]
-                    }
+                    "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" } }, "required": ["id", "name"] }
                 },
                 "parts": {
-                    "type": "array",
-                    "description": "A list of parts to be painted.",
+                    "type": "array", "description": "A list of parts to be painted.",
                     "items": {
                         "type": "object",
-                        "properties": {
-                            "id": { "type": "number" },
-                            "name": { "type": "string" },
-                            "sequence": { "type": "array", "items": { "type": "number" }, "description": "An array of paint IDs." }
-                        },
+                        "properties": { "id": { "type": "number" }, "name": { "type": "string" }, "sequence": { "type": "array", "items": { "type": "number" }, "description": "An array of paint IDs." } },
                         "required": ["id", "name", "sequence"]
                     }
                 }
@@ -932,7 +1000,7 @@
         function setJsonImportStatus(message, isError=false){
             const statusEl = document.getElementById('json-status');
             statusEl.textContent = message;
-            statusEl.className = isError ? 'error' : '';
+            statusEl.className = isError ? 'error' : 'success';
         }
         function resetJsonImportStatus(){ setJsonImportStatus('', false); }
 
@@ -950,33 +1018,18 @@
                     const response = await fetch(jsonUrl);
                     if (!response.ok) throw new Error(`Failed to fetch from URL: ${response.statusText}`);
                     projectData = await response.json();
-                } else {
-                    setJsonImportStatus("Please paste JSON or provide a URL.", true);
-                    return;
-                }
+                } else { setJsonImportStatus("Please paste JSON or provide a URL.", true); return; }
 
-                if (!projectData.title || !Array.isArray(projectData.paints) || !Array.isArray(projectData.parts)) {
-                    throw new Error("Invalid JSON structure. Missing required fields.");
-                }
+                if (!projectData.title || !Array.isArray(projectData.paints) || !Array.isArray(projectData.parts)) { throw new Error("Invalid JSON structure. Missing required fields."); }
 
                 if(confirm("This will replace your current project. All unsaved changes and progress will be lost. Continue?")) {
                     loadProjectFromData(projectData);
                     closeJsonModal();
                 }
-            } catch (error) {
-                console.error("JSON Import Error:", error);
-                setJsonImportStatus(`Error: ${error.message}`, true);
-            }
+            } catch (error) { console.error("JSON Import Error:", error); setJsonImportStatus(`Error: ${error.message}`, true); }
         }
         
-        function loadProjectFromData(data) {
-            _performReset(false); // Reset without changing URL
-            state.title = data.title;
-            state.paints = data.paints;
-            state.parts = data.parts;
-            markAsUnsavedAndAutoSave();
-            initializeAppLogic(); // Re-init with new state
-        }
+        function loadProjectFromData(data) { _performReset(false); state.title = data.title; state.paints = data.paints; state.parts = data.parts; markAsUnsavedAndAutoSave(); initializeAppLogic(); }
         
         // --- Initialization ---
 
