@@ -54,14 +54,12 @@
         .part-sequence-row { display: flex; align-items: center; gap: 15px; padding: 12px 0; border-bottom: 1px solid var(--border-color); transition: background-color 0.2s; }
         .part-sequence-row:last-child { border-bottom: none; }
         .part-name-label { font-weight: 600; width: 150px; flex-shrink: 0; }
-        .sequence-steps { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-grow: 1; }
+        .sequence-steps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-grow: 1; }
         .paint-step { display: flex; align-items: center; gap: 6px; background: #e4e6eb; border-radius: 6px; padding: 4px; position: relative; }
         .reorder-btn { display: inline-flex; align-items: center; justify-content: center; background: none; border: 1px solid #ccc; color: #888; border-radius: 50%; width: 22px; height: 22px; padding: 0; font-size: 14px; line-height: 1; text-align: center; cursor: pointer; transition: all 0.2s; }
         .reorder-btn:hover { background-color: #ddd; border-color: #aaa; color: #333; }
         .paint-step .remove-step-btn { color: #aaa; cursor: pointer; font-weight: bold; padding: 0 4px; }
         .paint-step .remove-step-btn:hover { color: var(--danger-color); }
-        .add-paint-control select, #stamp-color-select { padding: 6px; border-radius: 6px; border: 1px solid var(--border-color); }
-        .add-paint-control button { font-size: 0.9rem; padding: 6px 12px; }
         #stamp-tool-btn { background-color: var(--warning-color); color: var(--text-color); }
         #stamp-tool-btn:hover { background-color: var(--warning-hover-color); }
         #output { border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; background: #f8f9fa; min-height: 100px; transition: opacity 0.3s; }
@@ -93,14 +91,6 @@
         .main-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 15px; }
         #save-feedback { color: var(--secondary-color); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
         #stamp-tool-toolbar { display: none; background-color: var(--bg-color); padding: 15px; border-radius: 6px; margin-bottom: 20px; align-items: center; gap: 15px; border: 1px solid var(--border-color); }
-        .stamp-mode-active #stamp-tool-toolbar { display: flex; }
-        .stamp-mode-active .add-paint-control, .stamp-mode-active .reorder-btn, .stamp-mode-active .remove-step-btn { display: none; }
-        .drop-target { border: 2px dashed var(--border-color); border-radius: 6px; cursor: pointer; transition: all 0.2s; position: relative; }
-        .drop-target:hover { border-color: var(--warning-color); background-color: #fff8e1; }
-        .drop-target::before { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px; color: #ccc; transition: color 0.2s; }
-        .drop-target:hover::before { color: var(--warning-color); }
-        .drop-target.large { width: 50px; height: 32px; }
-        .drop-target.small { width: 20px; height: 32px; }
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10; display: none; }
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--surface-color); border-radius: 8px; z-index: 20; width: 90%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; }
         .modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
@@ -135,6 +125,14 @@
         .part-progress-info .status-ready { font-weight: 600; color: var(--secondary-color); }
         .part-progress-info .status-blocked { font-weight: 600; color: var(--danger-color); }
         
+        .add-paint-target { width: 22px; height: 22px; border-radius: 50%; border: 1px dashed #aaa; background-color: #f0f0f0; color: #777; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; line-height: 1; transition: all 0.2s;}
+        .add-paint-target:hover { background-color: var(--warning-color); border-style: solid; color: var(--text-color); }
+        #paint-select-popup { display: none; position: absolute; background: var(--surface-color); border: 1px solid var(--border-color); box-shadow: var(--shadow); border-radius: 6px; z-index: 100; max-height: 250px; overflow-y: auto; }
+        #paint-select-popup ul { list-style: none; padding: 5px; margin: 0; }
+        #paint-select-popup li { padding: 8px 12px; cursor: pointer; border-radius: 4px; }
+        #paint-select-popup li:hover { background-color: var(--bg-color); }
+        #paint-select-popup li.last-used { background-color: #eaf3ff; border-bottom: 1px solid var(--border-color); margin-bottom: 5px; font-weight: 600; color: var(--primary-color); }
+
         @media (max-width: 900px) {
             .setup-container { grid-template-columns: 1fr; }
             .part-sequence-row { flex-direction: column; align-items: flex-start; }
@@ -255,12 +253,16 @@
         </div>
     </div>
 
+    <div id="paint-select-popup"><ul></ul></div>
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         let state = { projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
         let paintIdMap = new Map();
         let nextPartId = 0;
         let nextPaintId = 0;
+        let lastSelectedPaintId = null;
+        let paintPopupContext = null;
         let scheduleData = { steps: [], partToSequence: new Map(), completedTasks: new Set(), currentTargetPartName: null, targetPathStepIds: new Set() };
         
         // Element caching
@@ -280,9 +282,8 @@
         const targetPartSelect = document.getElementById('target-part-select');
         const stampToolBtn = document.getElementById('stamp-tool-btn');
         const jsonModalOverlay = document.getElementById('json-modal-overlay');
-        const jsonModal = document.getElementById('json-modal');
-        const jsonModalCloseBtn = document.getElementById('json-modal-close-btn');
         const unusedItemsWarningDiv = document.getElementById('unused-items-warning');
+        const paintSelectPopup = document.getElementById('paint-select-popup');
         
         const sanitizeHTML = str => String(str).replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
         const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -336,46 +337,51 @@
         }
         
         function renderSequenceBuilder() {
-            const sequenceCard = document.getElementById('sequence-card');
             partSequenceContainer.innerHTML = '';
             if (state.parts.length === 0) {
                 partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>';
                 renderUnusedItemsWarning();
                 return;
             }
-            const isStamping = state.stampMode.isActive;
-            sequenceCard.classList.toggle('stamp-mode-active', isStamping);
 
             state.parts.forEach(part => {
                 const row = document.createElement('div');
                 row.className = 'part-sequence-row';
                 row.dataset.partId = part.id;
-                let sequenceItems = [];
-                const paintNameSequence = part.sequence.map(getPaintNameById);
+                
+                const stepsContainer = document.createElement('div');
+                stepsContainer.className = 'sequence-steps';
 
-                if (isStamping) {
-                    sequenceItems.push(`<div class="drop-target large" data-insert-index="0"></div>`);
-                    paintNameSequence.forEach((colorName, index) => {
-                        sequenceItems.push(`<div class="paint-step"><span>${sanitizeHTML(colorName)}</span></div>`);
-                        sequenceItems.push(`<div class="drop-target small" data-insert-index="${index + 1}"></div>`);
-                    });
-                } else {
-                    sequenceItems = paintNameSequence.map((colorName, index) => `
-                        <div class="paint-step">
-                            <button class="reorder-btn" data-dir="left" data-index="${index}" title="Move Left">←</button>
-                            <span>${sanitizeHTML(colorName)}</span>
-                            <button class="reorder-btn" data-dir="right" data-index="${index}" title="Move Right">→</button>
-                            <span class="remove-step-btn" data-index="${index}" title="Remove step">×</span>
-                        </div>`);
-                }
-                let selectOptions = state.paints.map(p => `<option value="${p.id}">${sanitizeHTML(p.name)}</option>`).join('') || '<option disabled>Add paints first</option>';
-                row.innerHTML = `
-                    <div class="part-name-label">${sanitizeHTML(part.name)}</div>
-                    <div class="sequence-steps">${sequenceItems.join('')}</div>
-                    <div class="add-paint-control"><select ${state.paints.length===0?'disabled':''}>${selectOptions}</select><button class="btn-add add-step-btn" ${state.paints.length===0?'disabled':''}>Add</button></div>`;
+                stepsContainer.appendChild(createAddPaintTarget(part.id, 0));
+
+                part.sequence.forEach((paintId, index) => {
+                    const paintName = getPaintNameById(paintId);
+                    const stepEl = document.createElement('div');
+                    stepEl.className = 'paint-step';
+                    stepEl.innerHTML = `
+                        <button class="reorder-btn" data-dir="left" data-index="${index}" title="Move Left">←</button>
+                        <span>${sanitizeHTML(paintName)}</span>
+                        <button class="reorder-btn" data-dir="right" data-index="${index}" title="Move Right">→</button>
+                        <span class="remove-step-btn" data-index="${index}" title="Remove step">×</span>`;
+                    stepsContainer.appendChild(stepEl);
+                    stepsContainer.appendChild(createAddPaintTarget(part.id, index + 1));
+                });
+
+                row.innerHTML = `<div class="part-name-label">${sanitizeHTML(part.name)}</div>`;
+                row.appendChild(stepsContainer);
                 partSequenceContainer.appendChild(row);
             });
             renderUnusedItemsWarning();
+        }
+
+        function createAddPaintTarget(partId, index) {
+            const el = document.createElement('div');
+            el.className = 'add-paint-target';
+            el.textContent = '+';
+            el.dataset.partId = partId;
+            el.dataset.insertIndex = index;
+            el.title = 'Add paint step';
+            return el;
         }
         
         function markAsUnsavedAndAutoSave() { saveBtn.classList.add('unsaved'); revertBtn.style.display = 'inline-block'; autoSaveProjectState(); }
@@ -511,23 +517,82 @@
             if (!partRow) return;
             const part = state.parts.find(p => p.id === parseInt(partRow.dataset.partId));
             if (!part) return;
-            if (state.stampMode.isActive && e.target.matches('.drop-target')) {
-                const insertIndex = parseInt(e.target.dataset.insertIndex);
-                part.sequence.splice(insertIndex, 0, state.stampMode.color);
-                invalidateSchedule(); markAsUnsavedAndAutoSave(); renderAll(); return;
-            }
+
             let stateChanged = false;
-            if (e.target.matches('.add-step-btn')) {
-                const select = partRow.querySelector('select');
-                if (select.value) { part.sequence.push(parseInt(select.value)); stateChanged = true; }
+            // Handle add paint clicks (both modes)
+            if (e.target.matches('.add-paint-target')) {
+                if (state.stampMode.isActive) {
+                    part.sequence.splice(parseInt(e.target.dataset.insertIndex), 0, state.stampMode.color);
+                    stateChanged = true;
+                } else {
+                    openPaintSelectPopup(e.target);
+                }
             } else if (e.target.matches('.remove-step-btn')) {
-                part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true;
+                part.sequence.splice(parseInt(e.target.dataset.index), 1);
+                stateChanged = true;
             } else if (e.target.matches('.reorder-btn')) {
-                const index = parseInt(e.target.dataset.index); const dir = e.target.dataset.dir;
+                const index = parseInt(e.target.dataset.index);
+                const dir = e.target.dataset.dir;
                 if (dir === 'left' && index > 0) { [part.sequence[index], part.sequence[index - 1]] = [part.sequence[index - 1], part.sequence[index]]; stateChanged = true; } 
                 else if (dir === 'right' && index < part.sequence.length - 1) { [part.sequence[index], part.sequence[index + 1]] = [part.sequence[index + 1], part.sequence[index]]; stateChanged = true; }
             }
+
             if (stateChanged) { invalidateSchedule(); markAsUnsavedAndAutoSave(); renderAll(); }
+        }
+
+        function openPaintSelectPopup(target) {
+            if (state.paints.length === 0) {
+                alert("Please add paints first.");
+                return;
+            }
+            paintPopupContext = {
+                partId: parseInt(target.dataset.partId),
+                insertIndex: parseInt(target.dataset.insertIndex)
+            };
+
+            const list = paintSelectPopup.querySelector('ul');
+            list.innerHTML = '';
+
+            if(lastSelectedPaintId !== null && paintIdMap.has(lastSelectedPaintId)) {
+                const li = document.createElement('li');
+                li.dataset.paintId = lastSelectedPaintId;
+                li.className = 'last-used';
+                li.textContent = `Last Used: ${getPaintNameById(lastSelectedPaintId)}`;
+                list.appendChild(li);
+            }
+    
+            state.paints.forEach(paint => {
+                const li = document.createElement('li');
+                li.dataset.paintId = paint.id;
+                li.textContent = paint.name;
+                list.appendChild(li);
+            });
+    
+            const rect = target.getBoundingClientRect();
+            paintSelectPopup.style.left = `${rect.left + window.scrollX}px`;
+            paintSelectPopup.style.top = `${rect.bottom + window.scrollY + 5}px`;
+            paintSelectPopup.style.display = 'block';
+        }
+
+        function closePaintSelectPopup() {
+            paintSelectPopup.style.display = 'none';
+            paintPopupContext = null;
+        }
+
+        function handlePaintSelect(e) {
+            if (!paintPopupContext) return;
+            const targetLi = e.target.closest('li[data-paint-id]');
+            if (!targetLi) return;
+
+            const paintId = parseInt(targetLi.dataset.paintId);
+            const part = state.parts.find(p => p.id === paintPopupContext.partId);
+            if (part) {
+                part.sequence.splice(paintPopupContext.insertIndex, 0, paintId);
+                lastSelectedPaintId = paintId;
+                markAsUnsavedAndAutoSave(); 
+                renderAll();
+            }
+            closePaintSelectPopup();
         }
 
         function generateOptimalOrder() {
@@ -752,13 +817,12 @@
                         </div>
                     </li>`;
             });
-
             partStatusList.innerHTML = items.join('');
         }
 
         function updateScheduleView() {
             if (scheduleData.steps.length === 0) {
-                renderPartStatusTracker(); // still render tracker even if schedule is empty
+                renderPartStatusTracker();
                 return;
             }
             outputDiv.innerHTML = '';
@@ -933,10 +997,7 @@
             scheduleData.partToSequence.clear();
             scheduleData.currentTargetPartName = null;
             scheduleData.targetPathStepIds.clear();
-            if (clearProgress && state.projectId) {
-                scheduleData.completedTasks.clear();
-                saveProgressToLocalStorage();
-            }
+            if (clearProgress && state.projectId) { scheduleData.completedTasks.clear(); saveProgressToLocalStorage(); }
             outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>';
             progressPercentageEl.textContent = '';
             targetPartSelect.innerHTML = '';
@@ -960,108 +1021,44 @@
         function handleReset() { if (confirm('Reset everything? This will clear all data, including auto-saves and progress for this project.')) { _performReset(); renderAll(); } }
         
         // --- JSON Import/Export ---
-
-        const projectSchema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "title": "Paint Sequencer Project",
-            "description": "A project file for the Paint Sequencer application.",
-            "type": "object",
-            "properties": {
-                "title": { "type": "string", "description": "The title of the project." },
-                "paints": {
-                    "type": "array",
-                    "description": "A list of available paints.",
-                    "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" } }, "required": ["id", "name"] }
-                },
-                "parts": {
-                    "type": "array", "description": "A list of parts to be painted.",
-                    "items": {
-                        "type": "object",
-                        "properties": { "id": { "type": "number" }, "name": { "type": "string" }, "sequence": { "type": "array", "items": { "type": "number" }, "description": "An array of paint IDs." } },
-                        "required": ["id", "name", "sequence"]
-                    }
-                }
-            },
-            "required": ["title", "paints", "parts"]
-        };
-
-
-        function generateProjectJSON() {
-            const projectData = {
-                title: state.title,
-                paints: state.paints.map(({ id, name }) => ({ id, name })),
-                parts: state.parts.map(({ id, name, sequence }) => ({ id, name, sequence }))
-            };
-            return JSON.stringify(projectData, null, 2);
-        }
-
-        function openJsonModal() {
-            document.getElementById('json-export-area').value = generateProjectJSON();
-            document.getElementById('json-schema-area').textContent = JSON.stringify(projectSchema, null, 2);
-            jsonModalOverlay.style.display = 'block';
-        }
-        function closeJsonModal() { jsonModalOverlay.style.display = 'none'; resetJsonImportStatus(); }
-
+        const projectSchema = { "$schema": "http://json-schema.org/draft-07/schema#", "title": "Paint Sequencer Project", "description": "A project file for the Paint Sequencer application.", "type": "object", "properties": { "title": { "type": "string", "description": "The title of the project." }, "paints": { "type": "array", "description": "A list of available paints.", "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" } }, "required": ["id", "name"] } }, "parts": { "type": "array", "description": "A list of parts to be painted.", "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" }, "sequence": { "type": "array", "items": { "type": "number" }, "description": "An array of paint IDs." } }, "required": ["id", "name", "sequence"] } } }, "required": ["title", "paints", "parts"] };
+        function generateProjectJSON() { const projectData = { title: state.title, paints: state.paints.map(({ id, name }) => ({ id, name })), parts: state.parts.map(({ id, name, sequence }) => ({ id, name, sequence })) }; return JSON.stringify(projectData, null, 2); }
+        function openJsonModal() { document.getElementById('json-export-area').value = generateProjectJSON(); document.getElementById('json-schema-area').textContent = JSON.stringify(projectSchema, null, 2); document.getElementById('json-modal-overlay').style.display = 'block'; }
+        function closeJsonModal() { document.getElementById('json-modal-overlay').style.display = 'none'; resetJsonImportStatus(); }
         function setupJsonModal() {
-            importExportBtn.addEventListener('click', openJsonModal);
-            jsonModalCloseBtn.addEventListener('click', closeJsonModal);
-            jsonModalOverlay.addEventListener('click', (e) => { if (e.target === jsonModalOverlay) closeJsonModal(); });
-
-            const tabs = jsonModal.querySelectorAll('.modal-tab');
-            const panes = jsonModal.querySelectorAll('.tab-pane');
+            document.getElementById('import-export-btn').addEventListener('click', openJsonModal);
+            document.getElementById('json-modal-close-btn').addEventListener('click', closeJsonModal);
+            document.getElementById('json-modal-overlay').addEventListener('click', (e) => { if (e.target === document.getElementById('json-modal-overlay')) closeJsonModal(); });
+            const modal = document.getElementById('json-modal');
+            const tabs = modal.querySelectorAll('.modal-tab');
+            const panes = modal.querySelectorAll('.tab-pane');
             tabs.forEach(tab => {
                 tab.addEventListener('click', () => {
-                    tabs.forEach(t => t.classList.remove('active'));
-                    panes.forEach(p => p.classList.remove('active'));
-                    tab.classList.add('active');
-                    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+                    tabs.forEach(t => t.classList.remove('active')); panes.forEach(p => p.classList.remove('active'));
+                    tab.classList.add('active'); document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
                 });
             });
-            
-            document.getElementById('copy-json-btn').addEventListener('click', () => {
-                const area = document.getElementById('json-export-area');
-                navigator.clipboard.writeText(area.value).then(() => alert('JSON copied to clipboard!'));
-            });
-
+            document.getElementById('copy-json-btn').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('json-export-area').value).then(() => alert('JSON copied to clipboard!')); });
             document.getElementById('import-json-btn').addEventListener('click', handleJsonImport);
         }
-
-        function setJsonImportStatus(message, isError=false){
-            const statusEl = document.getElementById('json-status');
-            statusEl.textContent = message;
-            statusEl.className = isError ? 'error' : 'success';
-        }
+        function setJsonImportStatus(message, isError=false){ const statusEl = document.getElementById('json-status'); statusEl.textContent = message; statusEl.className = isError ? 'error' : 'success'; }
         function resetJsonImportStatus(){ setJsonImportStatus('', false); }
-
         async function handleJsonImport() {
             resetJsonImportStatus();
             const jsonText = document.getElementById('json-import-area').value;
             const jsonUrl = document.getElementById('json-import-url').value;
             let projectData;
-
             try {
-                if (jsonText) {
-                    projectData = JSON.parse(jsonText);
-                } else if (jsonUrl) {
-                    setJsonImportStatus("Fetching from URL...");
-                    const response = await fetch(jsonUrl);
-                    if (!response.ok) throw new Error(`Failed to fetch from URL: ${response.statusText}`);
-                    projectData = await response.json();
-                } else { setJsonImportStatus("Please paste JSON or provide a URL.", true); return; }
-
+                if (jsonText) { projectData = JSON.parse(jsonText); } 
+                else if (jsonUrl) { setJsonImportStatus("Fetching from URL..."); const response = await fetch(jsonUrl); if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`); projectData = await response.json(); } 
+                else { setJsonImportStatus("Please paste JSON or provide a URL.", true); return; }
                 if (!projectData.title || !Array.isArray(projectData.paints) || !Array.isArray(projectData.parts)) { throw new Error("Invalid JSON structure. Missing required fields."); }
-
-                if(confirm("This will replace your current project. All unsaved changes and progress will be lost. Continue?")) {
-                    loadProjectFromData(projectData);
-                    closeJsonModal();
-                }
+                if(confirm("This will replace your current project. All unsaved changes and progress will be lost. Continue?")) { loadProjectFromData(projectData); closeJsonModal(); }
             } catch (error) { console.error("JSON Import Error:", error); setJsonImportStatus(`Error: ${error.message}`, true); }
         }
-        
         function loadProjectFromData(data) { _performReset(false); state.title = data.title; state.paints = data.paints; state.parts = data.parts; markAsUnsavedAndAutoSave(); initializeAppLogic(); }
         
         // --- Initialization ---
-
         function initializeAppLogic() {
             nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1;
             nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1;
@@ -1079,10 +1076,8 @@
                 loadedState = autoSavedState || stateFromURL;
                 if(autoSavedState) markAsUnsavedAndAutoSave(); else markAsSaved();
             }
-            
-            if (loadedState) {
-                state = { ...getDefaultState(), ...loadedState };
-            } else {
+            if (loadedState) { state = { ...getDefaultState(), ...loadedState }; }
+            else {
                 _performReset();
                 state.title = 'HG Gundam "Paint-by-Numbers"';
                 state.paints = [ {id: 0, name: 'Primer'}, {id: 1, name: 'Frame Gray'}, {id: 2, name: 'Armor White'}, {id: 3, name: 'Gundam Blue'}, {id: 4, name: 'Fin Red'}, {id: 5, name: 'V-Fin Yellow'}, {id: 6, name: 'Gloss Clearcoat'} ];
@@ -1093,28 +1088,7 @@
         }
         
         const eventListeners = [
-            { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint },
-            { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() },
-            { el: paintList, event: 'click', handler: handlePaintListClick },
-            { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true },
-            { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') },
-            { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart },
-            { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() },
-            { el: partList, event: 'click', handler: handlePartListClick },
-            { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true },
-            { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') },
-            { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction },
-            { el: titleInput, event: 'input', handler: handleTitleChange },
-            { el: saveBtn, event: 'click', handler: saveStateToURL },
-            { el: revertBtn, event: 'click', handler: handleRevert },
-            { el: generateBtn, event: 'click', handler: generateOptimalOrder },
-            { el: resetProgressBtn, event: 'click', handler: handleResetProgress },
-            { el: resetBtn, event: 'click', handler: handleReset },
-            { el: stampToolBtn, event: 'click', handler: enterStampMode },
-            { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode },
-            { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange },
-            { el: outputDiv, event: 'change', handler: handleOutputChange },
-            { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); } }
+            { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint }, { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() }, { el: paintList, event: 'click', handler: handlePaintListClick }, { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true }, { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') }, { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart }, { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() }, { el: partList, event: 'click', handler: handlePartListClick }, { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true }, { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') }, { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction }, { el: titleInput, event: 'input', handler: handleTitleChange }, { el: saveBtn, event: 'click', handler: saveStateToURL }, { el: revertBtn, event: 'click', handler: handleRevert }, { el: generateBtn, event: 'click', handler: generateOptimalOrder }, { el: resetProgressBtn, event: 'click', handler: handleResetProgress }, { el: resetBtn, event: 'click', handler: handleReset }, { el: stampToolBtn, event: 'click', handler: enterStampMode }, { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode }, { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange }, { el: outputDiv, event: 'change', handler: handleOutputChange }, { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); }}, { el: document, event: 'click', handler: (e) => { if (!paintSelectPopup.contains(e.target) && !e.target.matches('.add-paint-target')) closePaintSelectPopup(); } }, { el: paintSelectPopup, event: 'click', handler: handlePaintSelect }
         ];
         eventListeners.forEach(({el, event, handler, capture}) => el.addEventListener(event, handler, capture || false));
         
