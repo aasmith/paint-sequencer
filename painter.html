@@ -25,7 +25,7 @@
         .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
         .card { background-color: var(--surface-color); box-shadow: var(--shadow); border-radius: 8px; padding: 20px; position: relative; }
         .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-        .card-header h2 { border: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
+        .card-header h2, .card h3 { border: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
         .card-header .legend { color: var(--text-secondary-color); font-size: 0.9em; white-space: nowrap; margin-left: auto; }
         .header-controls { display: contents; }
         #progress-percentage { font-weight: 600; color: var(--primary-color); margin-left: auto; padding: 0 10px;}
@@ -90,7 +90,7 @@
         #output-section.invalidated #output { opacity: 0.4; }
         #output-section.invalidated::after { content: 'Schedule outdated. Please regenerate.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 100, 0.85); border: 1px solid #e0e060; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-align: center; }
         .main-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 15px; }
-        .main-controls-header { text-align: center; color: var(--text-secondary-color); width: 100%; margin-bottom: -5px; }
+        .main-controls-header { text-align: center; color: var(--text-secondary-color); width: 100%; margin: 10px 0 -5px 0; }
         #save-feedback { color: var(--secondary-color); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
         #stamp-tool-toolbar { display: none; background-color: var(--bg-color); padding: 15px; border-radius: 6px; margin-bottom: 20px; align-items: center; gap: 15px; border: 1px solid var(--border-color); }
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10; display: none; }
@@ -114,7 +114,6 @@
         #unused-items-warning h4 { margin-top: 0; margin-bottom: 10px; color: #9c6f00; }
         #unused-items-warning ul { margin: 0; padding-left: 20px; font-size: 0.9em; }
         #part-status-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
-        #part-status-container h3 { margin-top: 0; display: flex; align-items: center; gap: 8px; }
         #part-status-list { list-style-type: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
         .part-status-item { display: flex; flex-direction: column; gap: 8px; background-color: var(--bg-color); padding: 12px; border-radius: 6px; border-left: 4px solid var(--border-color); }
         .part-status-item.is-complete { border-left-color: var(--secondary-color); background-color: #f6fff5; }
@@ -135,11 +134,17 @@
         #paint-select-popup li.last-used { background-color: #eaf3ff; border-bottom: 1px solid var(--border-color); margin-bottom: 5px; font-weight: 600; color: var(--primary-color); }
         .help-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background-color: #ced4da; color: white; font-size: 12px; font-weight: bold; cursor: help; user-select: none; }
         #global-help-tooltip { visibility: hidden; opacity: 0; position: absolute; background-color: #343a40; color: white; padding: 8px 12px; border-radius: 6px; z-index: 200; font-size: 0.9rem; line-height: 1.5; max-width: 300px; transition: opacity 0.2s; pointer-events: none; }
-
+        #paint-usage-list { list-style-type: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 20px;}
+        .paint-usage-item { background-color: var(--bg-color); padding: 15px; border-radius: 6px; }
+        .paint-usage-item h4 { margin: 0 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
+        .paint-usage-item ul { list-style-type: none; padding: 0; margin: 0; font-size: 0.9em; column-count: 2; column-gap: 15px; }
+        .paint-usage-item .unused-text { font-style: italic; color: var(--text-secondary-color); font-size: 0.9em; margin: 0; }
+        
         @media (max-width: 900px) {
             .setup-container { grid-template-columns: 1fr; }
             .part-sequence-row { flex-direction: column; align-items: flex-start; }
             .main-controls { flex-direction: column; }
+            .paint-usage-item ul { column-count: 1; }
         }
     </style>
 </head>
@@ -212,6 +217,11 @@
                 <h3>Part Status Tracker <span class="help-icon" data-help-text="Track the real-time progress for each part. The status shows what's needed next to keep your project moving.">?</span></h3>
                 <ul id="part-status-list"><li style="color: var(--text-secondary-color);">Generate a schedule to see part status.</li></ul>
             </div>
+        </div>
+
+        <div class="card" id="paint-usage-card">
+            <h3>Paint Usage Summary <span class="help-icon" data-help-text="A quick reference to see which parts use each paint. This list updates automatically as you edit your sequences.">?</span></h3>
+            <ul id="paint-usage-list"><li style="color: var(--text-secondary-color);">Add paints and parts to see a summary.</li></ul>
         </div>
     </div>
     
@@ -288,6 +298,7 @@
         const unusedItemsWarningDiv = document.getElementById('unused-items-warning');
         const paintSelectPopup = document.getElementById('paint-select-popup');
         const globalHelpTooltip = document.getElementById('global-help-tooltip');
+        const paintUsageList = document.getElementById('paint-usage-list');
         
         const sanitizeHTML = str => String(str).replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
         const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -313,7 +324,7 @@
         function updatePaintIdMap() { paintIdMap.clear(); state.paints.forEach(paint => paintIdMap.set(paint.id, paint.name)); }
         const getPaintNameById = (id) => paintIdMap.get(id) || 'Unknown Paint';
         
-        const renderAll = () => { updatePaintIdMap(); renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); };
+        const renderAll = () => { updatePaintIdMap(); renderTitle(); renderPaintList(); renderPartList(); renderSequenceBuilder(); renderPaintUsageSummary(); };
         const renderTitle = () => { titleInput.value = state.title; document.title = state.title ? `${state.title} - Paint Sequencer` : "Paint Sequencer"; };
         
         const renderPaintList = () => {
@@ -386,6 +397,31 @@
             el.dataset.insertIndex = index;
             el.title = 'Add paint step';
             return el;
+        }
+        
+        function renderPaintUsageSummary() {
+            paintUsageList.innerHTML = '';
+            if (state.paints.length === 0) {
+                paintUsageList.innerHTML = '<li style="color: var(--text-secondary-color);">Add paints to see a summary.</li>';
+                return;
+            }
+
+            const items = state.paints.map(paint => {
+                const partsUsingPaint = state.parts
+                    .filter(part => part.sequence.includes(paint.id))
+                    .map(part => part.name)
+                    .sort(naturalSort);
+                
+                let partListHtml;
+                if (partsUsingPaint.length > 0) {
+                    partListHtml = `<ul>${partsUsingPaint.map(name => `<li>${sanitizeHTML(name)}</li>`).join('')}</ul>`;
+                } else {
+                    partListHtml = `<p class="unused-text">Not used in any sequence.</p>`;
+                }
+                
+                return `<li class="paint-usage-item"><h4>${sanitizeHTML(paint.name)}</h4>${partListHtml}</li>`;
+            });
+            paintUsageList.innerHTML = items.join('');
         }
         
         function markAsUnsavedAndAutoSave() { saveBtn.classList.add('unsaved'); revertBtn.style.display = 'inline-block'; autoSaveProjectState(); }
@@ -564,10 +600,8 @@
                 partId: parseInt(target.dataset.partId),
                 insertIndex: parseInt(target.dataset.insertIndex)
             };
-
             const list = paintSelectPopup.querySelector('ul');
             list.innerHTML = '';
-
             if(lastSelectedPaintId !== null && paintIdMap.has(lastSelectedPaintId)) {
                 const li = document.createElement('li');
                 li.dataset.paintId = lastSelectedPaintId;
@@ -575,15 +609,13 @@
                 li.textContent = `Last Used: ${getPaintNameById(lastSelectedPaintId)}`;
                 list.appendChild(li);
             }
-    
             state.paints.forEach(paint => {
-                if (paint.id === lastSelectedPaintId) return; // Don't show it twice
+                if (paint.id === lastSelectedPaintId) return;
                 const li = document.createElement('li');
                 li.dataset.paintId = paint.id;
                 li.textContent = paint.name;
                 list.appendChild(li);
             });
-    
             const rect = target.getBoundingClientRect();
             paintSelectPopup.style.left = `${rect.left + window.scrollX}px`;
             paintSelectPopup.style.top = `${rect.bottom + window.scrollY + 5}px`;
@@ -721,16 +753,7 @@
             if(scheduleData.targetPathStepIds.has(stepInfo.id)) wrapper.classList.add('is-target-path');
             
             let countText = (stepInfo.startableCount > 0 && remaining > 0) ? ` (${stepInfo.startableCount} of ${remaining} ready)` : '';
-            wrapper.innerHTML = `
-                <div class="step-header">
-                    <span class="start-indicator ${indicatorClass}" title="${sanitizeHTML(indicatorTitle)}">${indicatorIcon}</span>
-                    <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepInfo.color)}</code>${countText}</span>
-                    <label class="check-all-label">
-                        <input type="checkbox" class="master-checkbox" data-step-id="${stepInfo.id}" ${stepInfo.startableCount === 0 ? 'disabled' : ''}> Check All Ready
-                    </label>
-                </div>
-                <ul class="parts-checklist">${generatePartListHTML(stepInfo)}</ul>
-                <div class="completion-notices">${generateCompletionNoticesHTML(stepInfo)}</div>`;
+            wrapper.innerHTML = `<div class="step-header"><span class="start-indicator ${indicatorClass}" title="${sanitizeHTML(indicatorTitle)}">${indicatorIcon}</span><span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepInfo.color)}</code>${countText}</span><label class="check-all-label"><input type="checkbox" class="master-checkbox" data-step-id="${stepInfo.id}" ${stepInfo.startableCount === 0 ? 'disabled' : ''}> Check All Ready</label></div><ul class="parts-checklist">${generatePartListHTML(stepInfo)}</ul><div class="completion-notices">${generateCompletionNoticesHTML(stepInfo)}</div>`;
             return wrapper;
         }
 
@@ -747,20 +770,12 @@
             const partListHTML = stepGroup.map(generatePartListHTML).join('');
             const noticesHTML = stepGroup.map(generateCompletionNoticesHTML).join('');
 
-            wrapper.innerHTML = `
-                <div class="step-header">
-                    <span class="start-indicator full" title="All remaining parts are ready.">⭐</span>
-                    <span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepGroup[0].color)}</code>${countText}</span>
-                    ${masterCheck}
-                </div>
-                <ul class="parts-checklist">${partListHTML}</ul>
-                <div class="completion-notices">${noticesHTML}</div>`;
+            wrapper.innerHTML = `<div class="step-header"><span class="start-indicator full" title="All remaining parts are ready.">⭐</span><span class="step-action">Load <code class="output-color-name">${sanitizeHTML(stepGroup[0].color)}</code>${countText}</span>${masterCheck}</div><ul class="parts-checklist">${partListHTML}</ul><div class="completion-notices">${noticesHTML}</div>`;
             return wrapper;
         }
         
         function generatePartListHTML(stepInfo) {
             const sortedPartList = [...stepInfo.partList].sort((a,b) => naturalSort(a.name, b.name));
-
             return sortedPartList.map(partInfo => {
                 const { name, index } = partInfo;
                 const taskKey = getTaskKey(name, stepInfo.color, index);
@@ -769,10 +784,7 @@
                 let classes = 'part-item';
                 if (isCompleted) classes += ' completed';
                 if (!canStart && !isCompleted) classes += ' waiting';
-                return `<li class="${classes}"><label>
-                        <input type="checkbox" class="part-checkbox" data-part-name="${sanitizeHTML(name)}" data-color="${sanitizeHTML(stepInfo.color)}" data-index="${index}" 
-                            ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>
-                        ${sanitizeHTML(name)}</label></li>`;
+                return `<li class="${classes}"><label><input type="checkbox" class="part-checkbox" data-part-name="${sanitizeHTML(name)}" data-color="${sanitizeHTML(stepInfo.color)}" data-index="${index}" ${isCompleted ? 'checked' : ''} ${!canStart && !isCompleted ? 'disabled' : ''}>${sanitizeHTML(name)}</label></li>`;
             }).join('');
         }
         
@@ -829,7 +841,6 @@
             if (scheduleData.steps.length === 0) { return; }
             outputDiv.innerHTML = '';
             calculateProgress();
-
             const stepInfos = scheduleData.steps.map(step => {
                 let completedCount = 0, startableCount = 0;
                 step.partList.forEach(partInfo => {
@@ -838,7 +849,6 @@
                 });
                 return { ...step, completedCount, startableCount };
             });
-
             const completedSteps = [], fullyReadySteps = [], partiallyReadySteps = [], waitingSteps = [];
             stepInfos.forEach(s => {
                 const remaining = s.partList.length - s.completedCount;
@@ -847,13 +857,8 @@
                 else if (s.startableCount > 0) partiallyReadySteps.push(s);
                 else waitingSteps.push(s);
             });
-            
             const mergedReadyGroups = new Map();
-            fullyReadySteps.forEach(s => {
-                if(!mergedReadyGroups.has(s.color)) mergedReadyGroups.set(s.color, []);
-                mergedReadyGroups.get(s.color).push(s);
-            });
-            
+            fullyReadySteps.forEach(s => { if(!mergedReadyGroups.has(s.color)) mergedReadyGroups.set(s.color, []); mergedReadyGroups.get(s.color).push(s); });
             outputDiv.innerHTML = '';
             completedSteps.forEach(s => outputDiv.appendChild(createStepWrapper(s)));
             mergedReadyGroups.forEach(group => outputDiv.appendChild(createMergedStepWrapper(group)));
@@ -862,24 +867,17 @@
         }
         
         function calculateProgress() {
-            const { partToSequence } = scheduleData;
+            const { partToSequence, completedTasks } = scheduleData;
             if (!partToSequence || partToSequence.size === 0) { progressPercentageEl.textContent = 'Progress: 0%'; return;}
-            
             let completedPartsCount = 0;
-            partToSequence.forEach((sequence, partName) => {
-                if (sequence.every((color, index) => scheduleData.completedTasks.has(getTaskKey(partName, color, index)))) completedPartsCount++;
-            });
+            partToSequence.forEach((sequence, partName) => { if (sequence.every((color, index) => completedTasks.has(getTaskKey(partName, color, index)))) completedPartsCount++; });
             const percentage = Math.round((completedPartsCount / partToSequence.size) * 100);
             progressPercentageEl.textContent = `Progress: ${percentage}%`;
         }
 
         function handleOutputChange(e) {
             const target = e.target;
-            function toggleTask(partName, color, index, shouldBeChecked) {
-                const taskKey = getTaskKey(partName, color, index);
-                if (shouldBeChecked) scheduleData.completedTasks.add(taskKey); else scheduleData.completedTasks.delete(taskKey);
-            }
-
+            const toggleTask = (partName, color, index, shouldBeChecked) => { const key = getTaskKey(partName, color, index); if (shouldBeChecked) scheduleData.completedTasks.add(key); else scheduleData.completedTasks.delete(key); };
             if (target.matches('.part-checkbox')) {
                 toggleTask(target.dataset.partName, target.dataset.color, parseInt(target.dataset.index), target.checked);
             } else if (target.matches('.master-checkbox')) {
@@ -888,15 +886,9 @@
                 stepIds.forEach(stepId => {
                     const step = scheduleData.steps.find(s => s.id === stepId);
                     if (!step) return;
-                    step.partList.forEach(partInfo => {
-                        const { name, index } = partInfo;
-                        if (!scheduleData.completedTasks.has(getTaskKey(name, step.color, index)) && isPartStartable(name, index)) {
-                            toggleTask(name, step.color, index, isChecking);
-                        }
-                    });
+                    step.partList.forEach(({name, index}) => { if (!scheduleData.completedTasks.has(getTaskKey(name, step.color, index)) && isPartStartable(name, index)) toggleTask(name, step.color, index, isChecking); });
                 });
             } else { return; }
-            
             saveProgressToLocalStorage();
             updateScheduleView();
         }
@@ -904,84 +896,65 @@
         function setupTooltip() {
             document.body.addEventListener('mouseover', e => {
                 if (e.target.matches('.help-icon')) {
-                    const helpText = e.target.dataset.helpText;
-                    globalHelpTooltip.innerHTML = helpText;
-
+                    globalHelpTooltip.innerHTML = e.target.dataset.helpText;
                     const iconRect = e.target.getBoundingClientRect();
                     globalHelpTooltip.style.visibility = 'hidden';
-                    globalHelpTooltip.style.display = 'block'; // Block to calculate dimensions
+                    globalHelpTooltip.style.display = 'block';
                     const tipRect = globalHelpTooltip.getBoundingClientRect();
-                    globalHelpTooltip.style.display = ''; // Revert
-
-                    let top = iconRect.top - tipRect.height - 10;
-                    let left = iconRect.left + (iconRect.width / 2) - (tipRect.width / 2);
-
+                    globalHelpTooltip.style.display = '';
+                    let top = iconRect.top - tipRect.height - 10, left = iconRect.left + (iconRect.width / 2) - (tipRect.width / 2);
                     if (top < 10) { top = iconRect.bottom + 10; }
                     if (left < 10) { left = 10; }
                     if (left + tipRect.width > window.innerWidth - 10) { left = window.innerWidth - tipRect.width - 10; }
-
                     globalHelpTooltip.style.top = `${top + window.scrollY}px`;
                     globalHelpTooltip.style.left = `${left + window.scrollX}px`;
                     globalHelpTooltip.style.visibility = 'visible';
                     globalHelpTooltip.style.opacity = '1';
                 }
             });
-            document.body.addEventListener('mouseout', e => {
-                if (e.target.matches('.help-icon')) {
-                    globalHelpTooltip.style.opacity = '0';
-                    globalHelpTooltip.style.visibility = 'hidden';
-                }
-            });
+            document.body.addEventListener('mouseout', e => { if (e.target.matches('.help-icon')) { globalHelpTooltip.style.opacity = '0'; globalHelpTooltip.style.visibility = 'hidden'; } });
         }
         
         function autoSaveProjectState() { if (!state.projectId) return; try { localStorage.setItem(`paintSequencerProject_${state.projectId}`, JSON.stringify(state)); } catch (e) { console.error("Could not auto-save state:", e); } }
         function saveProgressToLocalStorage() { if (!state.projectId) return; try { localStorage.setItem(`paintSequencerProgress_${state.projectId}`, JSON.stringify(Array.from(scheduleData.completedTasks))); } catch (e) { console.error("Could not save progress:", e); } }
         function clearAutoSavedProjectState() { if (!state.projectId) return; localStorage.removeItem(`paintSequencerProject_${state.projectId}`); }
-
         function saveStateToURL() {
             const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
             window.location.hash = base64;
             navigator.clipboard.writeText(window.location.href).then(() => {
                 const feedback = document.getElementById('save-feedback');
-                feedback.textContent = 'Saved! Link copied to clipboard.';
-                feedback.style.opacity = '1';
+                feedback.textContent = 'Saved! Link copied to clipboard.'; feedback.style.opacity = '1';
                 setTimeout(() => { feedback.style.opacity = '0'; }, 3000);
             });
             clearAutoSavedProjectState(); markAsSaved();
         }
-
         function decodeStateFromURL() {
             if (!window.location.hash) return null;
             try {
-                const json = decodeURIComponent(escape(atob(window.location.hash.substring(1))));
-                let loadedState = JSON.parse(json);
+                let loadedState = JSON.parse(decodeURIComponent(escape(atob(window.location.hash.substring(1)))));
                 if (loadedState && loadedState.paints && loadedState.parts) {
                     if (!loadedState.projectId) loadedState.projectId = generateId();
                     if (loadedState.parts.length > 0 && loadedState.parts[0].sequence.length > 0 && typeof loadedState.parts[0].sequence[0] === 'string') {
-                        const nameToIdMap = new Map(loadedState.paints.map(p => [p.name, p.id]));
-                        loadedState.parts.forEach(part => { part.sequence = part.sequence.map(name => nameToIdMap.get(name)).filter(id => id !== undefined); });
+                        const map = new Map(loadedState.paints.map(p => [p.name, p.id]));
+                        loadedState.parts.forEach(part => { part.sequence = part.sequence.map(name => map.get(name)).filter(id => id !== undefined); });
                     }
                     return loadedState;
                 }
             } catch (e) { console.error("Failed to load state from URL hash:", e); }
             return null;
         }
-
         function loadAutoSavedProjectState(projectId) {
             if (!projectId) return null;
-            const key = `paintSequencerProject_${projectId}`;
-            const savedData= localStorage.getItem(key);
+            const savedData= localStorage.getItem(`paintSequencerProject_${projectId}`);
             if (savedData) { try { return JSON.parse(savedData); } catch (e) { console.error("Failed to parse auto-saved state:", e); return null; } }
             return null;
         }
-        
         function loadProgressFromLocalStorage(projectId) {
             scheduleData.completedTasks.clear();
             if (!projectId) return;
             const savedData = localStorage.getItem(`paintSequencerProgress_${projectId}`);
             if (savedData) { try { scheduleData.completedTasks = new Set(JSON.parse(savedData)); } catch(e) { console.error("Failed to parse progress:", e); } }
         }
-
         function handleRevert() { if (confirm("Discard all unsaved changes and revert to the last saved version of this project?")) { clearAutoSavedProjectState(); window.location.reload(); } }
         function handleResetProgress() { if (confirm("Are you sure you want to reset all progress for this project? All checkboxes will be cleared.")) { scheduleData.completedTasks.clear(); saveProgressToLocalStorage(); updateScheduleView(); } }
         function _resetSchedule(clearProgress = true) {
@@ -999,7 +972,6 @@
             exitStampMode(); markAsSaved();
         }
         function handleReset() { if (confirm('Reset everything? This will clear all data, including auto-saves and progress for this project.')) { _performReset(); renderAll(); } }
-        
         const projectSchema = { "$schema": "http://json-schema.org/draft-07/schema#", "title": "Paint Sequencer Project", "description": "A project file for the Paint Sequencer application.", "type": "object", "properties": { "title": { "type": "string" }, "paints": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" } }, "required": ["id", "name"] } }, "parts": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" }, "sequence": { "type": "array", "items": { "type": "number" } } }, "required": ["id", "name", "sequence"] } } }, "required": ["title", "paints", "parts"] };
         function generateProjectJSON() { return JSON.stringify({ title: state.title, paints: state.paints.map(({ id, name }) => ({ id, name })), parts: state.parts.map(({ id, name, sequence }) => ({ id, name, sequence })) }, null, 2); }
         function openJsonModal() { document.getElementById('json-export-area').value = generateProjectJSON(); document.getElementById('json-schema-area').textContent = JSON.stringify(projectSchema, null, 2); document.getElementById('json-modal-overlay').style.display = 'block'; }
@@ -1018,7 +990,7 @@
             } catch (error) { console.error("JSON Import Error:", error); setJsonImportStatus(`Error: ${error.message}`, true); }
         }
         function setupJsonModal() {
-            document.getElementById('import-export-btn').addEventListener('click', openJsonModal); const modal = document.getElementById('json-modal');
+            importExportBtn.addEventListener('click', openJsonModal); const modal = document.getElementById('json-modal');
             document.getElementById('json-modal-close-btn').addEventListener('click', closeJsonModal); document.getElementById('json-modal-overlay').addEventListener('click', e => { if (e.target === document.getElementById('json-modal-overlay')) closeJsonModal(); });
             const tabs = modal.querySelectorAll('.modal-tab'), panes = modal.querySelectorAll('.tab-pane');
             tabs.forEach(tab => tab.addEventListener('click', () => { tabs.forEach(t => t.classList.remove('active')); panes.forEach(p => p.classList.remove('active')); tab.classList.add('active'); document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active'); }));
@@ -1027,17 +999,12 @@
         }
         function loadProjectFromData(data) { _performReset(false); state.title = data.title; state.paints = data.paints; state.parts = data.parts; markAsUnsavedAndAutoSave(); initializeAppLogic(); }
         
-        function initializeAppLogic() {
-            nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1;
-            nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1;
-            loadProgressFromLocalStorage(state.projectId); renderAll(); generateOptimalOrder();
-        }
+        function initializeAppLogic() { nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1; nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1; loadProgressFromLocalStorage(state.projectId); renderAll(); generateOptimalOrder(); }
         function initializeApp() {
             const getDefaultState = () => ({ projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
             let loadedState = null, stateFromURL = decodeStateFromURL();
             if (stateFromURL) { let autoSavedState = loadAutoSavedProjectState(stateFromURL.projectId); loadedState = autoSavedState || stateFromURL; if(autoSavedState) markAsUnsavedAndAutoSave(); else markAsSaved(); }
-            if (loadedState) { state = { ...getDefaultState(), ...loadedState }; }
-            else {
+            if (loadedState) { state = { ...getDefaultState(), ...loadedState }; } else {
                 _performReset(); state.title = 'HG Gundam "Paint-by-Numbers"';
                 state.paints = [ {id: 0, name: 'Primer'}, {id: 1, name: 'Frame Gray'}, {id: 2, name: 'Armor White'}, {id: 3, name: 'Gundam Blue'}, {id: 4, name: 'Fin Red'}, {id: 5, name: 'V-Fin Yellow'}, {id: 6, name: 'Gloss Clearcoat'} ];
                 state.parts.push( { id: 0, name: 'A-13 (Chest)', sequence: [0, 3, 2, 6] }, { id: 1, name: 'B-10 (Skirt)', sequence: [0, 2, 0, 3, 6]}, { id: 2, name: 'C-2, C-5 (Leg Frame)', sequence: [1] }, { id: 3, name: 'D-1 (Shield)', sequence: [0, 4, 2, 6] }, { id: 4, name: 'B-9 (V-Fin)', sequence: [0, 5, 6] } );
@@ -1046,9 +1013,7 @@
             initializeAppLogic();
         }
         
-        const eventListeners = [
-            { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint }, { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() }, { el: paintList, event: 'click', handler: handlePaintListClick }, { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true }, { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') }, { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart }, { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() }, { el: partList, event: 'click', handler: handlePartListClick }, { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true }, { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') }, { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction }, { el: titleInput, event: 'input', handler: handleTitleChange }, { el: saveBtn, event: 'click', handler: saveStateToURL }, { el: revertBtn, event: 'click', handler: handleRevert }, { el: generateBtn, event: 'click', handler: generateOptimalOrder }, { el: resetProgressBtn, event: 'click', handler: handleResetProgress }, { el: resetBtn, event: 'click', handler: handleReset }, { el: stampToolBtn, event: 'click', handler: enterStampMode }, { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode }, { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange }, { el: outputDiv, event: 'change', handler: handleOutputChange }, { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); }}, { el: document, event: 'click', handler: (e) => { if (!paintSelectPopup.contains(e.target) && !e.target.matches('.add-paint-target')) closePaintSelectPopup(); } }, { el: paintSelectPopup, event: 'click', handler: handlePaintSelect }
-        ];
+        const eventListeners = [ { el: document, event: 'click', handler: (e) => { if (!paintSelectPopup.contains(e.target) && !e.target.matches('.add-paint-target')) closePaintSelectPopup(); } }, { el: paintSelectPopup, event: 'click', handler: handlePaintSelect }, { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction }, { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint }, { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() }, { el: paintList, event: 'click', handler: handlePaintListClick }, { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true }, { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') }, { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart }, { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() }, { el: partList, event: 'click', handler: handlePartListClick }, { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true }, { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') }, { el: titleInput, event: 'input', handler: handleTitleChange }, { el: saveBtn, event: 'click', handler: saveStateToURL }, { el: revertBtn, event: 'click', handler: handleRevert }, { el: generateBtn, event: 'click', handler: generateOptimalOrder }, { el: resetProgressBtn, event: 'click', handler: handleResetProgress }, { el: resetBtn, event: 'click', handler: handleReset }, { el: stampToolBtn, event: 'click', handler: enterStampMode }, { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode }, { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange }, { el: outputDiv, event: 'change', handler: handleOutputChange }, { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); }} ];
         eventListeners.forEach(({el, event, handler, capture}) => el.addEventListener(event, handler, capture || false));
         
         setupJsonModal();
