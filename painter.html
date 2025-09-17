@@ -144,6 +144,12 @@
         .paint-usage-item .unused-text { font-style: italic; color: var(--text-secondary-color); font-size: 0.9em; margin: 0; }
         
         #welcome-card h2, #welcome-card p { text-align: center; justify-content: center; }
+        #recent-projects-section { display: none; margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--border-color); }
+        #recent-projects-section h3 { font-size: 1.1rem; color: var(--text-secondary-color); text-align: center; justify-content: center; margin-bottom: 15px; }
+        #recent-projects-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; max-height: 180px; overflow-y: auto; }
+        #recent-projects-list li { display: flex; align-items: center; justify-content: space-between; background-color: var(--bg-color); padding: 8px; border-radius: 6px; }
+        #recent-projects-list .load-btn { flex-grow: 1; text-align: left; background: none; border: none; color: var(--primary-color); font-weight: 600; font-size: 1rem; cursor: pointer; padding: 5px; }
+        #recent-projects-list .load-btn:hover { text-decoration: underline; }
         
         .container.is-welcome .app-card { display: none; }
         .container:not(.is-welcome) #welcome-card { display: none; }
@@ -173,6 +179,10 @@
                 <button id="load-example-btn" class="btn-warning">📚 Load an Example Project</button>
                 <button id="load-file-welcome-btn">📂 Load File from Device</button>
                 <button id="import-json-welcome-btn">✍️ Paste JSON from Text</button>
+            </div>
+            <div id="recent-projects-section">
+                <h3>Or load a recent project:</h3>
+                <ul id="recent-projects-list"></ul>
             </div>
         </div>
 
@@ -337,6 +347,7 @@
         const paintUsageList = document.getElementById('paint-usage-list');
         const fileInfoDisplay = document.getElementById('file-info-display');
         const fileOpFeedback = document.getElementById('file-op-feedback');
+        const recentProjectsList = document.getElementById('recent-projects-list');
 
         const isFSSupported = 'showOpenFilePicker' in window;
         
@@ -497,7 +508,6 @@
             const paintIdToRemove = parseInt(e.target.dataset.paintId);
             const paintToRemove = state.paints.find(p => p.id === paintIdToRemove);
             if (!paintToRemove) return;
-
             if (state.parts.some(p => p.sequence.includes(paintIdToRemove))) {
                 if (!confirm(`Warning: This will remove "${paintToRemove.name}" from all part sequences. Proceed?`)) return;
                 state.parts.forEach(part => { part.sequence = part.sequence.filter(pid => pid !== paintIdToRemove); });
@@ -522,7 +532,6 @@
                 const newValue = target.textContent.trim();
                 let oldValue;
                 let isDuplicate = false; let idToUpdate;
-
                 if (listType === 'paint') {
                     idToUpdate = parseInt(target.closest('li').dataset.paintId);
                     const paint = state.paints.find(p => p.id === idToUpdate);
@@ -536,11 +545,9 @@
                     oldValue = part.name;
                     isDuplicate = state.parts.some(p => p.name === newValue && p.id !== idToUpdate);
                 }
-                
                 if (newValue === oldValue) return;
                 if (!newValue) { alert("Name cannot be empty."); target.textContent = oldValue; return; }
                 if (isDuplicate) { alert(`Name "${newValue}" already exists.`); target.textContent = oldValue; return; }
-                
                 const newCompletedTasks = new Set();
                 scheduleData.completedTasks.forEach(taskKey => {
                     let [partName, paintName, index] = taskKey.split('__');
@@ -550,7 +557,6 @@
                 });
                 scheduleData.completedTasks = newCompletedTasks;
                 saveProgressToLocalStorage();
-
                 if (listType === 'paint') {
                     const paint = state.paints.find(p => p.id === idToUpdate);
                     if (paint) paint.name = newValue;
@@ -562,12 +568,9 @@
                     scheduleData.partToSequence.forEach((seq, key) => { if(key === oldValue) { scheduleData.partToSequence.delete(key); scheduleData.partToSequence.set(newValue, seq); }});
                     if(scheduleData.currentTargetPartName === oldValue) scheduleData.currentTargetPartName = newValue;
                 }
-                
                 markAsUnsavedAndAutoSave();
-                renderAll();
-                updateScheduleView();
+                renderAll(); updateScheduleView();
             };
-
             if (e.type === 'keydown' && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); target.blur(); if (e.key === 'Escape') target.textContent = target.dataset.originalName; }
             else if (e.type === 'blur') { saveEdit(); }
         }
@@ -575,7 +578,6 @@
         function handleSequenceInteraction(e) {
             const partRow = e.target.closest('.part-sequence-row');
             if (!partRow) return;
-
             if (e.target.matches('.add-paint-target')) {
                 const part = state.parts.find(p => p.id === parseInt(e.target.dataset.partId));
                 if (state.stampMode.isActive) {
@@ -583,17 +585,13 @@
                 } else { openPaintSelectPopup(e.target); }
                 return;
             }
-
             const paintStep = e.target.closest('.paint-step');
             if(!paintStep) return;
             const part = state.parts.find(p => p.id === parseInt(partRow.dataset.partId));
             if (!part) return;
             let stateChanged = false;
-            
-            if (e.target.matches('.remove-step-btn')) {
-                part.sequence.splice(parseInt(e.target.dataset.index), 1);
-                stateChanged = true;
-            } else if (e.target.matches('.reorder-btn')) {
+            if (e.target.matches('.remove-step-btn')) { part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true; }
+            else if (e.target.matches('.reorder-btn')) {
                 const index = parseInt(e.target.dataset.index);
                 const dir = e.target.dataset.dir;
                 if (dir === 'left' && index > 0) { [part.sequence[index], part.sequence[index - 1]] = [part.sequence[index - 1], part.sequence[index]]; stateChanged = true; } 
@@ -708,8 +706,7 @@
         }
 
         function createStepWrapper(stepInfo) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'step-wrapper';
+            const wrapper = document.createElement('div'); wrapper.className = 'step-wrapper';
             let indicatorIcon, indicatorTitle, indicatorClass;
             const remaining = stepInfo.partList.length - stepInfo.completedCount;
             if (remaining === 0) { indicatorIcon = '✔️'; indicatorTitle = 'Step completed.'; indicatorClass = 'success'; wrapper.classList.add('is-completed'); }
@@ -826,8 +823,7 @@
                     globalHelpTooltip.style.visibility = 'hidden'; globalHelpTooltip.style.display = 'block';
                     const tipRect = globalHelpTooltip.getBoundingClientRect();
                     globalHelpTooltip.style.display = ''; let top = iconRect.top - tipRect.height - 10, left = iconRect.left + (iconRect.width / 2) - (tipRect.width / 2);
-                    if (top < 10) top = iconRect.bottom + 10;
-                    if (left < 10) left = 10;
+                    if (top < 10) top = iconRect.bottom + 10; if (left < 10) left = 10;
                     if (left + tipRect.width > window.innerWidth - 10) left = window.innerWidth - tipRect.width - 10;
                     globalHelpTooltip.style.top = `${top + window.scrollY}px`; globalHelpTooltip.style.left = `${left + window.scrollX}px`;
                     globalHelpTooltip.style.visibility = 'visible'; globalHelpTooltip.style.opacity = '1';
@@ -836,8 +832,8 @@
             document.body.addEventListener('mouseout', e => { if (e.target.matches('.help-icon')) { globalHelpTooltip.style.opacity = '0'; globalHelpTooltip.style.visibility = 'hidden'; } });
         }
         
-        function autoSaveProjectState() { if (!state.projectId) return; try { localStorage.setItem(`paintSequencerProject_${state.projectId}`, JSON.stringify(state)); } catch (e) { console.error("Could not auto-save state:", e); } }
-        function saveProgressToLocalStorage() { if (!state.projectId) return; try { localStorage.setItem(`paintSequencerProgress_${state.projectId}`, JSON.stringify(Array.from(scheduleData.completedTasks))); } catch (e) { console.error("Could not save progress:", e); } }
+        function autoSaveProjectState() { if (isPristineState || !state.projectId) return; try { localStorage.setItem(`paintSequencerProject_${state.projectId}`, JSON.stringify(state)); } catch (e) { console.error("Could not auto-save state:", e); } }
+        function saveProgressToLocalStorage() { if (isPristineState || !state.projectId) return; try { localStorage.setItem(`paintSequencerProgress_${state.projectId}`, JSON.stringify(Array.from(scheduleData.completedTasks))); } catch (e) { console.error("Could not save progress:", e); } }
         function clearAutoSavedProjectState() { if (!state.projectId) return; localStorage.removeItem(`paintSequencerProject_${state.projectId}`); }
         
         function showFeedback(element, message, isError = false) {
@@ -948,7 +944,7 @@
                 else if (jsonUrl) { setJsonImportStatus("Fetching from URL..."); const response = await fetch(jsonUrl); if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`); projectData = await response.json(); } 
                 else { setJsonImportStatus("Please paste JSON or provide a URL.", true); return; }
                 if (!projectData.title || !Array.isArray(projectData.paints) || !Array.isArray(projectData.parts)) { throw new Error("Invalid JSON structure. Missing required fields."); }
-                if(confirm("This will replace your current project. All unsaved changes and progress will be lost. Continue?")) { loadProjectFromData(projectData); closeJsonModal(); }
+                if(isPristineState || confirm("This will replace your current project. All unsaved changes and progress will be lost. Continue?")) { loadProjectFromData(projectData); closeJsonModal(); }
             } catch (error) { console.error("JSON Import Error:", error); setJsonImportStatus(`Error: ${error.message}`, true); }
         }
         function setupJsonModal() {
@@ -958,6 +954,7 @@
             tabs.forEach(tab => tab.addEventListener('click', () => { tabs.forEach(t => t.classList.remove('active')); panes.forEach(p => p.classList.remove('active')); tab.classList.add('active'); document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active'); }));
             document.getElementById('copy-json-btn').addEventListener('click', () => navigator.clipboard.writeText(document.getElementById('json-export-area').value).then(() => alert('JSON copied to clipboard!')));
             document.getElementById('import-json-btn').addEventListener('click', handleJsonImport);
+            document.getElementById('import-json-welcome-btn').addEventListener('click', openJsonModal);
         }
         function loadProjectFromData(data, clearFileHandle = true) {
             _performReset(false); state.title = data.title; state.paints = data.paints; state.parts = data.parts;
@@ -973,19 +970,77 @@
             markAsUnsavedAndAutoSave();
             initializeAppLogic();
         }
+
+        function findSavedProjects() {
+            const projects = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('paintSequencerProject_')) {
+                    try {
+                        const projectData = JSON.parse(localStorage.getItem(key));
+                        if(projectData && projectData.projectId && projectData.title) {
+                            projects.push({ id: projectData.projectId, title: projectData.title });
+                        }
+                    } catch (e) {
+                         console.error(`Could not parse saved project from localStorage key: ${key}`);
+                    }
+                }
+            }
+            return projects;
+        }
+
+        function renderRecentProjects() {
+            const projects = findSavedProjects();
+            const section = document.getElementById('recent-projects-section');
+            recentProjectsList.innerHTML = '';
+            if (projects.length > 0) {
+                projects.forEach(p => {
+                    const li = document.createElement('li');
+                    li.dataset.projectId = p.id;
+                    li.innerHTML = `<button class="load-btn">${sanitizeHTML(p.title)}</button><span class="remove-btn" title="Delete Saved Project">×</span>`;
+                    recentProjectsList.appendChild(li);
+                });
+                section.style.display = 'block';
+            } else {
+                 section.style.display = 'none';
+            }
+        }
+        
+        function handleRecentProjectInteraction(e) {
+            const li = e.target.closest('li[data-project-id]');
+            if (!li) return;
+            const projectId = li.dataset.projectId;
+
+            if (e.target.matches('.remove-btn')) {
+                if (confirm(`Are you sure you want to delete the project "${li.querySelector('.load-btn').textContent}"? This cannot be undone.`)) {
+                    localStorage.removeItem(`paintSequencerProject_${projectId}`);
+                    localStorage.removeItem(`paintSequencerProgress_${projectId}`);
+                    renderRecentProjects();
+                }
+            } else if (e.target.matches('.load-btn')) {
+                const projectState = loadAutoSavedProjectState(projectId);
+                if (projectState) {
+                    loadProjectFromData(projectState, false);
+                }
+            }
+        }
         
         function initializeAppLogic() { nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1; nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1; loadProgressFromLocalStorage(state.projectId); renderAll(); generateOptimalOrder(); }
         function initializeApp() {
             const getDefaultState = () => ({ projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
             let loadedState = null, stateFromURL = decodeStateFromURL();
             if (stateFromURL) { let autoSavedState = loadAutoSavedProjectState(stateFromURL.projectId); loadedState = autoSavedState || stateFromURL; if(autoSavedState) markAsUnsavedAndAutoSave(); else markAsSaved(); }
-            if (loadedState) { state = { ...getDefaultState(), ...loadedState }; isPristineState = false; } else { _performReset(true); }
-            if(isPristineState) container.classList.add('is-welcome');
+            if (loadedState) { state = { ...getDefaultState(), ...loadedState }; isPristineState = false; }
+            else { _performReset(true); }
+            if(isPristineState) {
+                container.classList.add('is-welcome');
+                renderRecentProjects();
+            }
             initializeAppLogic(); updateFileInfoDisplay(null);
             if (!isFSSupported) { [loadFileBtn, saveFileBtn, document.getElementById('load-file-welcome-btn')].forEach(btn => { if(btn) { btn.disabled = true; btn.title = "Your browser does not support the File System Access API."; } }); }
         }
         
-        const eventListeners = [ { el: document, event: 'click', handler: (e) => { if (!paintSelectPopup.contains(e.target) && !e.target.matches('.add-paint-target')) closePaintSelectPopup(); } }, { el: paintSelectPopup, event: 'click', handler: handlePaintSelect }, { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction }, { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint }, { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() }, { el: paintList, event: 'click', handler: handlePaintListClick }, { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true }, { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') }, { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart }, { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() }, { el: partList, event: 'click', handler: handlePartListClick }, { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true }, { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') }, { el: titleInput, event: 'input', handler: handleTitleChange }, { el: shareBtn, event: 'click', handler: shareViaURL }, { el: revertBtn, event: 'click', handler: handleRevert }, { el: generateBtn, event: 'click', handler: generateOptimalOrder }, { el: resetProgressBtn, event: 'click', handler: handleResetProgress }, { el: resetBtn, event: 'click', handler: handleReset }, { el: stampToolBtn, event: 'click', handler: enterStampMode }, { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode }, { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange }, { el: outputDiv, event: 'change', handler: handleOutputChange }, { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); }}, { el: loadFileBtn, event: 'click', handler: handleLoadFile }, { el: saveFileBtn, event: 'click', handler: handleSaveFile }, { el: document.getElementById('load-example-btn'), event: 'click', handler: loadExampleProject }, { el: document.getElementById('start-blank-btn'), event: 'click', handler: dismissWelcome }, { el: document.getElementById('load-file-welcome-btn'), event: 'click', handler: handleLoadFile }, { el: document.getElementById('import-json-welcome-btn'), event: 'click', handler: openJsonModal } ];
+        const eventListeners = [ { el: document, event: 'click', handler: (e) => { if (!paintSelectPopup.contains(e.target) && !e.target.matches('.add-paint-target')) closePaintSelectPopup(); } }, { el: paintSelectPopup, event: 'click', handler: handlePaintSelect }, { el: partSequenceContainer, event: 'click', handler: handleSequenceInteraction }, { el: document.getElementById('add-paint-btn'), event: 'click', handler: handleAddPaint }, { el: document.getElementById('paint-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPaint() }, { el: paintList, event: 'click', handler: handlePaintListClick }, { el: paintList, event: 'blur', handler: (e) => handleNameEdit(e, 'paint'), capture: true }, { el: paintList, event: 'keydown', handler: (e) => handleNameEdit(e, 'paint') }, { el: document.getElementById('add-part-btn'), event: 'click', handler: handleAddPart }, { el: document.getElementById('part-input'), event: 'keydown', handler: e => e.key === 'Enter' && handleAddPart() }, { el: partList, event: 'click', handler: handlePartListClick }, { el: partList, event: 'blur', handler: (e) => handleNameEdit(e, 'part'), capture: true }, { el: partList, event: 'keydown', handler: (e) => handleNameEdit(e, 'part') }, { el: titleInput, event: 'input', handler: handleTitleChange }, { el: shareBtn, event: 'click', handler: shareViaURL }, { el: revertBtn, event: 'click', handler: handleRevert }, { el: generateBtn, event: 'click', handler: generateOptimalOrder }, { el: resetProgressBtn, event: 'click', handler: handleResetProgress }, { el: resetBtn, event: 'click', handler: handleReset }, { el: stampToolBtn, event: 'click', handler: enterStampMode }, { el: document.getElementById('exit-stamp-btn'), event: 'click', handler: exitStampMode }, { el: document.getElementById('stamp-color-select'), event: 'change', handler: handleStampColorChange }, { el: outputDiv, event: 'change', handler: handleOutputChange }, { el: targetPartSelect, event: 'change', handler: () => { scheduleData.currentTargetPartName = targetPartSelect.value || null; updateTargetPath(); updateScheduleView(); }}, { el: loadFileBtn, event: 'click', handler: handleLoadFile }, { el: saveFileBtn, event: 'click', handler: handleSaveFile }, { el: document.getElementById('load-example-btn'), event: 'click', handler: loadExampleProject }, { el: document.getElementById('start-blank-btn'), event: 'click', handler: dismissWelcome }, { el: document.getElementById('load-file-welcome-btn'), event: 'click', handler: handleLoadFile }, { el: recentProjectsList, event: 'click', handler: handleRecentProjectInteraction } ];
         eventListeners.forEach(({el, event, handler, capture}) => el && el.addEventListener(event, handler, capture || false));
         
         setupJsonModal();
