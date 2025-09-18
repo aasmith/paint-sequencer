@@ -391,37 +391,26 @@
             const unusedPaints = state.paints.filter(p => !usedPaintIds.has(p.id));
             const unusedParts = state.parts.filter(p => p.sequence.length === 0);
 
-            if (unusedPaints.length === 0 && unusedParts.length === 0) {
-                unusedItemsWarningDiv.style.display = 'none';
-                return;
-            }
+            if (unusedPaints.length === 0 && unusedParts.length === 0) { unusedItemsWarningDiv.style.display = 'none'; return; }
             let html = '<h4>⚠️ Unused Items</h4>';
             if (unusedPaints.length > 0) { html += `<strong>Paints:</strong><ul>${unusedPaints.map(p => `<li>${sanitizeHTML(p.name)}</li>`).join('')}</ul>`; }
             if (unusedParts.length > 0) { html += `<strong>Parts:</strong><ul>${unusedParts.map(p => `<li>${sanitizeHTML(p.name)}</li>`).join('')}</ul>`; }
-            unusedItemsWarningDiv.innerHTML = html;
-            unusedItemsWarningDiv.style.display = 'block';
+            unusedItemsWarningDiv.innerHTML = html; unusedItemsWarningDiv.style.display = 'block';
         }
         
         function renderSequenceBuilder() {
             partSequenceContainer.innerHTML = '';
             if (isPristineState) return;
-
             if (state.parts.length === 0) {
                 partSequenceContainer.innerHTML = '<p style="color: var(--text-secondary-color);">Add parts to begin.</p>';
-                renderUnusedItemsWarning();
-                return;
+                renderUnusedItemsWarning(); return;
             }
-
             state.parts.forEach(part => {
                 const row = document.createElement('div');
-                row.className = 'part-sequence-row';
-                row.dataset.partId = part.id;
-                
+                row.className = 'part-sequence-row'; row.dataset.partId = part.id;
                 const stepsContainer = document.createElement('div');
                 stepsContainer.className = 'sequence-steps';
-
                 stepsContainer.appendChild(createAddPaintTarget(part.id, 0));
-
                 part.sequence.forEach((paintId, index) => {
                     const paintName = getPaintNameById(paintId);
                     const stepEl = document.createElement('div');
@@ -430,7 +419,6 @@
                     stepsContainer.appendChild(stepEl);
                     stepsContainer.appendChild(createAddPaintTarget(part.id, index + 1));
                 });
-
                 row.innerHTML = `<div class="part-name-label">${sanitizeHTML(part.name)}</div>`;
                 row.appendChild(stepsContainer);
                 partSequenceContainer.appendChild(row);
@@ -440,20 +428,14 @@
 
         function createAddPaintTarget(partId, index) {
             const el = document.createElement('div');
-            el.className = 'add-paint-target';
-            el.textContent = '+';
-            el.dataset.partId = partId;
-            el.dataset.insertIndex = index;
-            el.title = 'Add paint step';
+            el.className = 'add-paint-target'; el.textContent = '+';
+            el.dataset.partId = partId; el.dataset.insertIndex = index; el.title = 'Add paint step';
             return el;
         }
         
         function renderPaintUsageSummary() {
             paintUsageList.innerHTML = '';
-            if (state.paints.length === 0) {
-                paintUsageList.innerHTML = '<li style="color: var(--text-secondary-color);">Add paints to see a summary.</li>';
-                return;
-            }
+            if (state.paints.length === 0) { paintUsageList.innerHTML = '<li style="color: var(--text-secondary-color);">Add paints to see a summary.</li>'; return; }
             const items = state.paints.map(paint => {
                 const partsUsingPaint = state.parts.filter(part => part.sequence.includes(paint.id)).map(part => part.name).sort(naturalSort);
                 let partListHtml;
@@ -467,7 +449,13 @@
         function markAsUnsavedAndAutoSave() { saveFileBtn.classList.add('unsaved'); revertBtn.style.display = 'inline-block'; autoSaveProjectState(); }
         function markAsSaved() { saveFileBtn.classList.remove('unsaved'); revertBtn.style.display = 'none'; }
         function invalidateSchedule() { if (scheduleData.steps.length > 0) outputSection.classList.add('invalidated'); }
-        function dismissWelcome() { isPristineState = false; container.classList.remove('is-welcome'); }
+        function dismissWelcome() {
+            if (isPristineState) { 
+                isPristineState = false; 
+                if (!state.projectId) { state.projectId = generateId(); }
+                container.classList.remove('is-welcome');
+            }
+        }
 
         function enterStampMode() {
             if (state.paints.length === 0) { alert("Please add at least one paint color before using the Stamp Tool."); return; }
@@ -541,8 +529,7 @@
                 } else { // part
                     idToUpdate = parseInt(target.dataset.partId);
                     const part = state.parts.find(p => p.id === idToUpdate);
-                    if (!part) return;
-                    oldValue = part.name;
+                    if (!part) return; oldValue = part.name;
                     isDuplicate = state.parts.some(p => p.name === newValue && p.id !== idToUpdate);
                 }
                 if (newValue === oldValue) return;
@@ -568,32 +555,27 @@
                     scheduleData.partToSequence.forEach((seq, key) => { if(key === oldValue) { scheduleData.partToSequence.delete(key); scheduleData.partToSequence.set(newValue, seq); }});
                     if(scheduleData.currentTargetPartName === oldValue) scheduleData.currentTargetPartName = newValue;
                 }
-                markAsUnsavedAndAutoSave();
-                renderAll(); updateScheduleView();
+                markAsUnsavedAndAutoSave(); renderAll(); updateScheduleView();
             };
             if (e.type === 'keydown' && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); target.blur(); if (e.key === 'Escape') target.textContent = target.dataset.originalName; }
             else if (e.type === 'blur') { saveEdit(); }
         }
         
         function handleSequenceInteraction(e) {
-            const partRow = e.target.closest('.part-sequence-row');
-            if (!partRow) return;
+            const partRow = e.target.closest('.part-sequence-row'); if (!partRow) return;
             if (e.target.matches('.add-paint-target')) {
                 const part = state.parts.find(p => p.id === parseInt(e.target.dataset.partId));
-                if (state.stampMode.isActive) {
-                    if (part) { part.sequence.splice(parseInt(e.target.dataset.insertIndex), 0, state.stampMode.color); invalidateSchedule(); markAsUnsavedAndAutoSave(); renderAll(); }
-                } else { openPaintSelectPopup(e.target); }
+                if (state.stampMode.isActive) { if (part) { part.sequence.splice(parseInt(e.target.dataset.insertIndex), 0, state.stampMode.color); invalidateSchedule(); markAsUnsavedAndAutoSave(); renderAll(); } }
+                else { openPaintSelectPopup(e.target); }
                 return;
             }
             const paintStep = e.target.closest('.paint-step');
             if(!paintStep) return;
             const part = state.parts.find(p => p.id === parseInt(partRow.dataset.partId));
-            if (!part) return;
-            let stateChanged = false;
+            if (!part) return; let stateChanged = false;
             if (e.target.matches('.remove-step-btn')) { part.sequence.splice(parseInt(e.target.dataset.index), 1); stateChanged = true; }
             else if (e.target.matches('.reorder-btn')) {
-                const index = parseInt(e.target.dataset.index);
-                const dir = e.target.dataset.dir;
+                const index = parseInt(e.target.dataset.index), dir = e.target.dataset.dir;
                 if (dir === 'left' && index > 0) { [part.sequence[index], part.sequence[index - 1]] = [part.sequence[index - 1], part.sequence[index]]; stateChanged = true; } 
                 else if (dir === 'right' && index < part.sequence.length - 1) { [part.sequence[index], part.sequence[index + 1]] = [part.sequence[index + 1], part.sequence[index]]; stateChanged = true; }
             }
@@ -603,8 +585,7 @@
         function openPaintSelectPopup(target) {
             if (state.paints.length === 0) { alert("Please add paints first."); return; }
             paintPopupContext = { partId: parseInt(target.dataset.partId), insertIndex: parseInt(target.dataset.insertIndex) };
-            const list = paintSelectPopup.querySelector('ul');
-            list.innerHTML = '';
+            const list = paintSelectPopup.querySelector('ul'); list.innerHTML = '';
             if(lastSelectedPaintId !== null && paintIdMap.has(lastSelectedPaintId)) {
                 const li = document.createElement('li');
                 li.dataset.paintId = lastSelectedPaintId; li.className = 'last-used'; li.textContent = `Last Used: ${getPaintNameById(lastSelectedPaintId)}`;
@@ -612,22 +593,18 @@
             }
             state.paints.forEach(paint => {
                 if (paint.id === lastSelectedPaintId) return;
-                const li = document.createElement('li');
-                li.dataset.paintId = paint.id; li.textContent = paint.name;
-                list.appendChild(li);
+                const li = document.createElement('li'); li.dataset.paintId = paint.id; li.textContent = paint.name; list.appendChild(li);
             });
             const rect = target.getBoundingClientRect();
             paintSelectPopup.style.left = `${rect.left + window.scrollX}px`;
             paintSelectPopup.style.top = `${rect.bottom + window.scrollY + 5}px`;
-            paintSelectPopup.style.display = 'block';
-            paintSelectPopup.scrollTop = 0;
+            paintSelectPopup.style.display = 'block'; paintSelectPopup.scrollTop = 0;
         }
 
         function closePaintSelectPopup() { paintSelectPopup.style.display = 'none'; paintPopupContext = null; }
         function handlePaintSelect(e) {
             if (!paintPopupContext) return;
-            const targetLi = e.target.closest('li[data-paint-id]');
-            if (!targetLi) return;
+            const targetLi = e.target.closest('li[data-paint-id]'); if (!targetLi) return;
             const paintId = parseInt(targetLi.dataset.paintId);
             const part = state.parts.find(p => p.id === paintPopupContext.partId);
             if (part) { part.sequence.splice(paintPopupContext.insertIndex, 0, paintId); lastSelectedPaintId = paintId; markAsUnsavedAndAutoSave(); renderAll(); }
@@ -638,14 +615,12 @@
             _resetSchedule(false);
             if (isPristineState || state.parts.length === 0) {
                 outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">Your schedule will appear here.</p>'; 
-                document.getElementById('part-status-list').innerHTML = `<li style="color: var(--text-secondary-color);">No sequenced parts to track.</li>`;
-                return;
+                document.getElementById('part-status-list').innerHTML = `<li style="color: var(--text-secondary-color);">No sequenced parts to track.</li>`; return;
             }
             let partsToProcess = JSON.parse(JSON.stringify(state.parts)).filter(p => p.sequence.length > 0).map(p => ({ ...p, currentStep: 0 }));
             if (partsToProcess.length === 0) {
                 outputDiv.innerHTML = '<p style="color: var(--text-secondary-color);">No parts with paint sequences.</p>'; 
-                document.getElementById('part-status-list').innerHTML = `<li style="color: var(--text-secondary-color);">No sequenced parts to track.</li>`;
-                return;
+                document.getElementById('part-status-list').innerHTML = `<li style="color: var(--text-secondary-color);">No sequenced parts to track.</li>`; return;
             }
             let stepIdCounter = 0;
             while (partsToProcess.some(p => p.currentStep < p.sequence.length)) {
@@ -680,16 +655,13 @@
         function updateTargetPath() {
             scheduleData.targetPathStepIds.clear();
             const { currentTargetPartName, partToSequence, steps } = scheduleData;
-            if (!currentTargetPartName) return;
-            const targetSequence = partToSequence.get(currentTargetPartName);
-            if (!targetSequence) return;
+            if (!currentTargetPartName) return; const targetSequence = partToSequence.get(currentTargetPartName); if (!targetSequence) return;
             let requiredTasks = new Set(targetSequence.map((color, index) => getTaskKey(currentTargetPartName, color, index)));
             let toProcess = [...requiredTasks];
             while (toProcess.length > 0) {
                 const taskKey = toProcess.pop();
                 const [partName, , indexStr] = taskKey.split('__'); const index = parseInt(indexStr);
-                const sequence = partToSequence.get(partName);
-                if(!sequence || index === 0) continue;
+                const sequence = partToSequence.get(partName); if(!sequence || index === 0) continue;
                 const prereqIndex = index - 1, prereqColor = sequence[prereqIndex];
                 const prereqTaskKey = getTaskKey(partName, prereqColor, prereqIndex);
                 if (!requiredTasks.has(prereqTaskKey)) { requiredTasks.add(prereqTaskKey); toProcess.push(prereqTaskKey); }
@@ -720,8 +692,7 @@
         }
 
         function createMergedStepWrapper(stepGroup) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'step-wrapper';
+            const wrapper = document.createElement('div'); wrapper.className = 'step-wrapper';
             const allOriginalIds = stepGroup.map(s => s.id);
             if(allOriginalIds.some(id => scheduleData.targetPathStepIds.has(id))) wrapper.classList.add('is-target-path');
             const totalStartable = stepGroup.reduce((sum, s) => sum + s.startableCount, 0), totalRemaining = stepGroup.reduce((sum, s) => sum + (s.partList.length - s.completedCount), 0);
@@ -832,8 +803,8 @@
             document.body.addEventListener('mouseout', e => { if (e.target.matches('.help-icon')) { globalHelpTooltip.style.opacity = '0'; globalHelpTooltip.style.visibility = 'hidden'; } });
         }
         
-        function autoSaveProjectState() { if (isPristineState || !state.projectId) return; try { localStorage.setItem(`paintSequencerProject_${state.projectId}`, JSON.stringify(state)); } catch (e) { console.error("Could not auto-save state:", e); } }
-        function saveProgressToLocalStorage() { if (isPristineState || !state.projectId) return; try { localStorage.setItem(`paintSequencerProgress_${state.projectId}`, JSON.stringify(Array.from(scheduleData.completedTasks))); } catch (e) { console.error("Could not save progress:", e); } }
+        function autoSaveProjectState() { if (!state.projectId) return; try { localStorage.setItem(`paintSequencerProject_${state.projectId}`, JSON.stringify(state)); } catch (e) { console.error("Could not auto-save state:", e); } }
+        function saveProgressToLocalStorage() { if (!state.projectId) return; try { localStorage.setItem(`paintSequencerProgress_${state.projectId}`, JSON.stringify(Array.from(scheduleData.completedTasks))); } catch (e) { console.error("Could not save progress:", e); } }
         function clearAutoSavedProjectState() { if (!state.projectId) return; localStorage.removeItem(`paintSequencerProject_${state.projectId}`); }
         
         function showFeedback(element, message, isError = false) {
@@ -844,12 +815,14 @@
         }
 
         function shareViaURL() {
-            const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+            const cleanState = { ...state };
+            delete cleanState.projectId; // Never share the internal projectId
+            const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(cleanState))));
             window.location.hash = base64;
             navigator.clipboard.writeText(window.location.href).then(() => {
                 showFeedback(document.getElementById('share-feedback'), 'Shareable link copied to clipboard!');
             });
-            clearAutoSavedProjectState(); markAsSaved();
+            markAsSaved();
         }
         
         function updateFileInfoDisplay(handle) { if (handle) { fileInfoDisplay.innerHTML = `Current File: <strong>${sanitizeHTML(handle.name)}</strong>`; } else { fileInfoDisplay.innerHTML = `No file loaded. Save to create one.`; } }
@@ -861,8 +834,7 @@
                 const file = await fileHandle.getFile();
                 const content = await file.text();
                 const data = JSON.parse(content);
-                loadProjectFromData(data, false);
-                updateFileInfoDisplay(fileHandle);
+                loadProjectFromData(data, { fromFile: true });
             } catch (err) { if (err.name !== 'AbortError') console.error('Error loading file:', err); }
         }
 
@@ -870,11 +842,11 @@
             try {
                 if (!fileHandle) {
                     fileHandle = await window.showSaveFilePicker({ suggestedName: 'paint-project.json', types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }] });
-                    updateFileInfoDisplay(fileHandle);
                 }
                 const writable = await fileHandle.createWritable();
                 await writable.write(generateProjectJSON());
                 await writable.close();
+                updateFileInfoDisplay(fileHandle);
                 markAsSaved(); showFeedback(fileOpFeedback, "File saved successfully!");
             } catch (err) { if (err.name !== 'AbortError') { console.error('Error saving file:', err); showFeedback(fileOpFeedback, "Error saving file.", true); } }
         }
@@ -884,11 +856,6 @@
             try {
                 let loadedState = JSON.parse(decodeURIComponent(escape(atob(window.location.hash.substring(1)))));
                 if (loadedState && loadedState.paints && loadedState.parts) {
-                    if (!loadedState.projectId) loadedState.projectId = generateId();
-                    if (loadedState.parts.length > 0 && loadedState.parts[0].sequence.length > 0 && typeof loadedState.parts[0].sequence[0] === 'string') {
-                        const map = new Map(loadedState.paints.map(p => [p.name, p.id]));
-                        loadedState.parts.forEach(part => { part.sequence = part.sequence.map(name => map.get(name)).filter(id => id !== undefined); });
-                    }
                     return loadedState;
                 }
             } catch (e) { console.error("Failed to load state from URL hash:", e); }
@@ -922,7 +889,7 @@
         
         function _performReset(isNewProject = true) {
             if(state.projectId) { localStorage.removeItem(`paintSequencerProgress_${state.projectId}`); localStorage.removeItem(`paintSequencerProject_${state.projectId}`); }
-            state = { projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
+            state = { projectId: null, title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } };
             nextPartId = 0; nextPaintId = 0; _resetSchedule(true);
             if(isNewProject) { isPristineState = true; container.classList.add('is-welcome'); history.pushState("", document.title, window.location.pathname + window.location.search); fileHandle = null; updateFileInfoDisplay(null); }
             exitStampMode(); markAsSaved();
@@ -931,7 +898,7 @@
         function handleReset() { if (confirm('Reset everything? This will clear all data, including auto-saves and progress for this project.')) { _performReset(); renderAll(); } }
         
         const projectSchema = { "$schema": "http://json-schema.org/draft-07/schema#", "title": "Paint Sequencer Project", "description": "A project file for the Paint Sequencer application.", "type": "object", "properties": { "title": { "type": "string" }, "paints": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" } }, "required": ["id", "name"] } }, "parts": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "number" }, "name": { "type": "string" }, "sequence": { "type": "array", "items": { "type": "number" } } }, "required": ["id", "name", "sequence"] } } }, "required": ["title", "paints", "parts"] };
-        function generateProjectJSON() { return JSON.stringify({ title: state.title, paints: state.paints.map(({ id, name }) => ({ id, name })), parts: state.parts.map(({ id, name, sequence }) => ({ id, name, sequence })) }, null, 2); }
+        function generateProjectJSON() { const { projectId, stampMode, ...exportableState } = state; return JSON.stringify(exportableState, null, 2); }
         function openJsonModal() { document.getElementById('json-export-area').value = generateProjectJSON(); document.getElementById('json-schema-area').textContent = JSON.stringify(projectSchema, null, 2); document.getElementById('json-modal-overlay').style.display = 'block'; }
         function closeJsonModal() { document.getElementById('json-modal-overlay').style.display = 'none'; resetJsonImportStatus(); }
         function setJsonImportStatus(message, isError=false){ const el = document.getElementById('json-status'); el.textContent = message; el.className = isError ? 'error' : 'success'; }
@@ -956,14 +923,25 @@
             document.getElementById('import-json-btn').addEventListener('click', handleJsonImport);
             document.getElementById('import-json-welcome-btn').addEventListener('click', openJsonModal);
         }
-        function loadProjectFromData(data, clearFileHandle = true) {
-            _performReset(false); state.title = data.title; state.paints = data.paints; state.parts = data.parts;
-            if (clearFileHandle) { fileHandle = null; }
-            dismissWelcome(); markAsSaved(); initializeAppLogic(); updateFileInfoDisplay(fileHandle);
+
+        function loadProjectFromData(data, options = {}) {
+            const { fromLocalStorage = false, fromFile = false } = options;
+            const newProjectId = fromLocalStorage && data.projectId ? data.projectId : generateId();
+            _performReset(false); // Reset without triggering welcome screen
+            state = { ...state, ...data, projectId: newProjectId };
+            if (!fromFile) {
+                fileHandle = null;
+            }
+            dismissWelcome();
+            markAsUnsavedAndAutoSave();
+            initializeAppLogic();
+            updateFileInfoDisplay(fileHandle);
         }
 
         function loadExampleProject() {
+            _performReset(false);
             dismissWelcome();
+            state.projectId = generateId(); // Assign a new ID for local storage
             state.title = 'HG Gundam "Paint-by-Numbers"';
             state.paints = [ {id: 0, name: 'Primer'}, {id: 1, name: 'Frame Gray'}, {id: 2, name: 'Armor White'}, {id: 3, name: 'Gundam Blue'}, {id: 4, name: 'Fin Red'}, {id: 5, name: 'V-Fin Yellow'}, {id: 6, name: 'Gloss Clearcoat'} ];
             state.parts.push( { id: 0, name: 'A-13 (Chest)', sequence: [0, 3, 2, 6] }, { id: 1, name: 'B-10 (Skirt)', sequence: [0, 2, 0, 3, 6]}, { id: 2, name: 'C-2, C-5 (Leg Frame)', sequence: [1] }, { id: 3, name: 'D-1 (Shield)', sequence: [0, 4, 2, 6] }, { id: 4, name: 'B-9 (V-Fin)', sequence: [0, 5, 6] } );
@@ -1020,23 +998,25 @@
             } else if (e.target.matches('.load-btn')) {
                 const projectState = loadAutoSavedProjectState(projectId);
                 if (projectState) {
-                    loadProjectFromData(projectState, false);
+                    loadProjectFromData(projectState, { fromLocalStorage: true });
                 }
             }
         }
         
         function initializeAppLogic() { nextPartId = state.parts.reduce((max, p) => Math.max(max, p.id), -1) + 1; nextPaintId = state.paints.reduce((max, p) => Math.max(max, p.id), -1) + 1; loadProgressFromLocalStorage(state.projectId); renderAll(); generateOptimalOrder(); }
         function initializeApp() {
-            const getDefaultState = () => ({ projectId: generateId(), title: "Untitled Project", paints: [], parts: [], stampMode: { isActive: false, color: null } });
-            let loadedState = null, stateFromURL = decodeStateFromURL();
-            if (stateFromURL) { let autoSavedState = loadAutoSavedProjectState(stateFromURL.projectId); loadedState = autoSavedState || stateFromURL; if(autoSavedState) markAsUnsavedAndAutoSave(); else markAsSaved(); }
-            if (loadedState) { state = { ...getDefaultState(), ...loadedState }; isPristineState = false; }
-            else { _performReset(true); }
+            let loadedState = decodeStateFromURL();
+            if (loadedState) { 
+                loadProjectFromData(loadedState);
+            } else {
+                _performReset(true); 
+            }
             if(isPristineState) {
                 container.classList.add('is-welcome');
                 renderRecentProjects();
             }
-            initializeAppLogic(); updateFileInfoDisplay(null);
+            initializeAppLogic(); 
+            updateFileInfoDisplay(null);
             if (!isFSSupported) { [loadFileBtn, saveFileBtn, document.getElementById('load-file-welcome-btn')].forEach(btn => { if(btn) { btn.disabled = true; btn.title = "Your browser does not support the File System Access API."; } }); }
         }
         
